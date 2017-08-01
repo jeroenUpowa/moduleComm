@@ -1,0 +1,56 @@
+MODEM STARTUP
+
+
+	AT												Attention
+		AT
+	ATE0											Echo off
+		ATE0
+
+	AT+CPOWD=1										Modem shutdown
+		
+	AT+CSQ 											Query RSSI
+	
+GPRS CONFIGURATION
+
+	AT+CGATT?							
+	AT+CGATT=1							"Attach or detach from GPRS service"  ????
+
+	For "IP high level" applications (HTTP, FTP, EMAIL)
+
+		AT+SAPBR=3,1,"Contype", "GPRS"				Configure bearer profile (profile 1) as GPRS, set APN and settings
+		AT+SAPBR=3,1,"APN","<your apn here>"
+		AT+SAPBR=3,1,"USER","<>"
+		AT+SAPBR=3,1,"PWD","<>"
+		
+		AT+SAPBR=1,1 								Connect to bearer profile 1
+		
+		AT+SAPBR=2,1							 	To query the GPRS context.
+			+SAPBR:1,1,”<your ip addr>”
+	 
+		AT+SAPBR=0,1	 							To close a GPRS context. 
+	
+	For "Low Level" applications (TCP UDP)
+		
+		AT+CGATT=<0,1>								Connect/Disconnect from GPRS network
+		
+		AT+CSTT=<apn>,<user name>,<password>		Configure bearer profile (for low level calls ?)
+		AT+CIICR 									Bring up wireless connection
+		AT+CIFSR 									Get local IP
+		
+		
+		AT+CIPSHUT									Deactivate GPRS PDP Context 
+
+
+HTTP CALLS
+
+	AT+HTTPINIT										Init HTTP service 
+	AT+HTTPPARA="CID",1 							Set bearer profile to be used
+	AT+HTTPPARA="URL","www.sim.com" 				Set target URL
+	AT+HTTPDATA=<len>,<timeout for data mode>		(POST only) post data
+	AT+HTTPACTION=<1,0> 							0: GET 1: POST
+		+HTTPACTION: 0,200(statuscode),<server data len>
+	AT+HTTPREAD										(GET only) Read server answer data
+		+HTTPREAD: <server data len>
+	AT+HTTPTERM
+	
+	
