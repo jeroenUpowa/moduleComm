@@ -2,10 +2,7 @@
 
 #ifdef LORA
 
-#include "debug.h"
-#include <lmic.h>
-#include <hal/hal.h>
-#include <SPI.h>
+#include "lora_jobs.h"
 
 #define SAMPLE_SIZE 19
 
@@ -164,6 +161,9 @@ inline uint8_t get_data_from_box(uint8_t *buffer) {
 #define UITOA_BUFFER_SIZE 6
 void uitoa(uint16_t val, uint8_t *buff);
 
+static osjob_t blinkjob;
+void blinkfunc(osjob_t* job);
+
 // Configuration
 
 // application router ID -> Gateway EUI (little-endian format)
@@ -183,17 +183,12 @@ void os_getDevKey(u1_t* buf) { memcpy_P(buf, APPKEY, 16); }
 // cycle limitations).
 const unsigned TX_INTERVAL = 60;
 
+//Retry joining after this many seconds
+const unsigned RETRY_JOIN = 120;
+
 //Set conection & TX timeout
 ostime_t JOIN_TIME = sec2osticks(120); // wait x secondes before timeout
-ostime_t TX_TIME = sec2osticks(20);
-
-// interval with which the LED blinks in seconds
-// used to give information about the LoRa state
-// 5 s    - default
-// 500 ms - LoRa module trying to join network
-// 1 s    - LoRa module successfully joined network
-// 100 ms - LoRa module not joined network after retrying.
-uint8_t BLINK_INTERVAL = 1;
+ostime_t TX_TIME = sec2osticks(120);
 
 // Pin mapping
 const lmic_pinmap lmic_pins = {
@@ -202,6 +197,14 @@ const lmic_pinmap lmic_pins = {
 	.rst = 4,
 	.dio = { 3,SDA,6 },
 };
+
+// interval with which the LED blinks in seconds
+// used to give information about the LoRa state
+// 5 s    - default
+// 500 ms - LoRa module trying to join network
+// 1 s    - LoRa module successfully joined network
+// 100 ms - LoRa module not joined network after retrying.
+uint8_t BLINK_INTERVAL = 1;
 
 // LMIC Event Callback
 
@@ -225,6 +228,8 @@ void onEvent(ev_t ev) {
 		Serial.println(F("EV_JOINED"));
 		BLINK_INTERVAL = 1;
 		isJoined = true;
+		// Reporting
+		os_setCallback(&lora_report, lora_send);
 		break;
 	case EV_RFU1:
 		Serial.println(F("EV_RFU1 - unhandled event"));
@@ -232,6 +237,9 @@ void onEvent(ev_t ev) {
 	case EV_JOIN_FAILED:
 		Serial.println(F("EV_JOIN_FAILED"));
 		BLINK_INTERVAL = 100;
+		os_clearCallback(&lora_setup);
+		Serial.println(F("Retry joining in 120 seconds"));
+		os_setTimedCallback(&lora_setup, os_getTime() + sec2osticks(RETRY_JOIN), lora_init);
 		break;
 	case EV_TXCOMPLETE:
 		Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
@@ -252,7 +260,6 @@ void onEvent(ev_t ev) {
 
 // Jobs
 
-static osjob_t blinkjob;
 void blinkfunc(osjob_t* job)
 {
 	digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
@@ -263,30 +270,11 @@ void blinkfunc(osjob_t* job)
 		os_setTimedCallback(job, os_getTime() + sec2osticks(BLINK_INTERVAL), blinkfunc);
 }
 
+
 enum comm_status_code comm_setup(void)
 {
-	// Configure pins
-	pinMode(LED_BUILTIN, OUTPUT);
-	pinMode(lmic_pins.rst, OUTPUT);
-
-	digitalWrite(LED_BUILTIN, HIGH);
-	// Start Serial
-	while (!Serial);
-	Serial.begin(115200);
-	delay(1000);
-	Serial.println(F("Starting"));
-
-	// Hard-resetting the radio
-	//digitalWrite(lmic_pins.rst, LOW);
-	//delay(2000);
-	//digitalWrite(lmic_pins.rst, HIGH);
-	//comm_abort();
-
 	Serial.println(F("Connecting to gateway..."));
-	// LMIC init
-	os_init();
-
-	//Blink job
+	// Blink job
 	os_setCallback(&blinkjob, blinkfunc);
 
 	// Reset the MAC state. Session and pending data transfers will be discarded.
@@ -299,11 +287,14 @@ enum comm_status_code comm_setup(void)
 	{
 		os_runloop_once();
 	}
-
+	
 	if (!isJoined)
 	{
 		Serial.println(F("Connection timeout"));
-		comm_abort();
+		BLINK_INTERVAL = 100;
+		os_clearCallback(&lora_setup);
+		Serial.println(F("Retry joining in RETRY_JOIN seconds"));
+		os_setTimedCallback(&lora_setup, os_getTime() + sec2osticks(RETRY_JOIN), lora_init); // Retry joining
 		return COMM_ERR_RETRY_LATER;
 	}
 	else
@@ -311,17 +302,6 @@ enum comm_status_code comm_setup(void)
 		return COMM_OK;
 	}
 }
-
-enum comm_status_code comm_start_report(uint16_t totallen)
-{
-
-}
-
-enum comm_status_code comm_fill_report(const uint8_t *buffer, int lenght)
-{
-
-}
-
 
 enum comm_status_code comm_send_report(void)
 {
@@ -331,12 +311,16 @@ enum comm_status_code comm_send_report(void)
 		if (LMIC.opmode & OP_TXRXPEND)
 		{
 			Serial.println(F("OP_TXRXPEND, not sending"));
+			os_clearCallback(&lora_report);
+			//comm_abort();
+			Serial.println(F("Trying again in TX_INTERVAL seconds"));
+			os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send);
 			return COMM_ERR_RETRY_LATER;
 		}
 		else
 		{
-			//Blink job
-			os_setCallback(&blinkjob, blinkfunc);
+			Serial.println(F("Starting Report"));
+			isSent  = false;
 
 			// (Re)Configure serial interface to the box
 			Serial1.begin(38400);
@@ -348,6 +332,9 @@ enum comm_status_code comm_send_report(void)
 			if (code != 0) { // Something wrong
 				db("sampling aborted");
 				Serial1.end();
+				//comm_abort();
+				Serial.println(F("Trying again in TX_INTERVAL seconds"));
+				os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send);
 				return COMM_ERR_RETRY;
 			}
 
@@ -367,11 +354,16 @@ enum comm_status_code comm_send_report(void)
 			{
 				Serial.println(F("TX timeout"));
 				Serial1.end();
-				comm_abort();
+				os_clearCallback(&lora_report);
+				//comm_abort();
+				Serial.println(F("Trying again in TX_INTERVAL seconds"));
+				os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send);
 				return COMM_ERR_RETRY_LATER;
 			}
 			Serial1.end();
-			comm_abort();
+			Serial.println(F("Scheduling next transmission..."));
+			os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send); // Next transmission in 60 secondes
+			//comm_abort();
 			return COMM_OK;
 		}
 	}
