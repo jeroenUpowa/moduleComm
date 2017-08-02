@@ -29,20 +29,9 @@ const char* getcode(enum comm_status_code code)
 
 void setup()
 {
-	const char report_string[] = "Hello World, this is LORA";
-
 	enum comm_status_code code;
 	code = comm_setup();
 	Serial.println(getcode(code));
-
-	enum comm_status_code code_start;
-	code_start = comm_start_report(strlen(report_string));
-	Serial.println(getcode(code_start));
-
-
-	enum comm_status_code code_fill;
-	code_fill = comm_fill_report((const uint8_t *)report_string, strlen(report_string));
-	Serial.println(getcode(code_fill));
 
 	enum comm_status_code code_report;
 	code_report = comm_send_report();
