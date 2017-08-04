@@ -198,7 +198,7 @@ inline uint8_t get_special_data_from_box(uint8_t *buffer) {
 
 	db_module(); db_print(F("got soc: ")); db_print(soc); db_print(F(", bc: ")); db_println(bc);
 
-	for (int i = 0; i < 18; i++)
+	for (int i = 0; i < 19; i++)
 		buffer[i] = '0';
 	buffer[0] = '#';
 	int val = total_samples;
@@ -275,10 +275,9 @@ void sampling_task(void) {
 	//uint8_t code = get_special_data_from_box(buff);
 
 	if (code != 0) { // Something wrong
-		db("sampling aborted");
-		stor_abort();
-		Serial1.end();
-		return;
+		db("sampling failed - write failed to memory");
+		for (int j = 0; j < SAMPLE_SIZE; j++)
+			buff[j] = '0';
 	}
 
 	// Store this sample to the external eeprom
