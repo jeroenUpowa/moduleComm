@@ -187,7 +187,7 @@ const unsigned TX_INTERVAL = 60;
 const unsigned RETRY_JOIN = 120;
 
 //Set conection & TX timeout
-ostime_t JOIN_TIME = sec2osticks(120); // wait x secondes before timeout
+ostime_t JOIN_TIME = sec2osticks(60); // wait x secondes before timeout
 ostime_t TX_TIME = sec2osticks(120);
 
 // Pin mapping
@@ -293,6 +293,7 @@ enum comm_status_code comm_setup(void)
 		Serial.println(F("Connection timeout"));
 		BLINK_INTERVAL = 100;
 		os_clearCallback(&lora_setup);
+		LMIC_shutdown();
 		Serial.println(F("Retry joining in RETRY_JOIN seconds"));
 		os_setTimedCallback(&lora_setup, os_getTime() + sec2osticks(RETRY_JOIN), lora_init); // Retry joining
 		return COMM_ERR_RETRY_LATER;
