@@ -2,15 +2,13 @@
 
 #ifdef LORA
 
-
 #include "lora_jobs.h"
 
 #define SAMPLE_SIZE 19
 
 /*
-Communication library for the Feather LORA
+Communication library for the Feather FONA GSM board and the Feather LORA
 */
-
 // Sampling task
 
 #ifdef __AVR__
@@ -158,8 +156,6 @@ inline uint8_t get_data_from_box(uint8_t *buffer) {
 	db("sampling successful");
 	return 0;
 }
-//// END SAMPLING_TASK
-
 
 // Prototypes
 #define UITOA_BUFFER_SIZE 6
@@ -175,7 +171,7 @@ static const u1_t PROGMEM APPEUI[8] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77
 void os_getArtEui(u1_t* buf) { memcpy_P(buf, APPEUI, 8); }
 
 // Device EUI (little endian format)
-static const u1_t PROGMEM DEVEUI[8] = { 0x08, 0x05, 0x04, 0x05, 0x05, 0x06, 0x07, 0x08 };
+static const u1_t PROGMEM DEVEUI[8] = { 0x07, 0x04, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
 void os_getDevEui(u1_t* buf) { memcpy_P(buf, DEVEUI, 8); }
 devaddr_t DevAddr = 0x74345678;
 
@@ -185,13 +181,13 @@ void os_getDevKey(u1_t* buf) { memcpy_P(buf, APPKEY, 16); }
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
-const unsigned TX_INTERVAL = 300;
+const unsigned TX_INTERVAL = 60;
 
 //Retry joining after this many seconds
 const unsigned RETRY_JOIN = 120;
 
 //Set conection & TX timeout
-ostime_t JOIN_TIME = sec2osticks(360); // wait x secondes before timeout
+ostime_t JOIN_TIME = sec2osticks(60); // wait x secondes before timeout
 ostime_t TX_TIME = sec2osticks(120);
 
 // Pin mapping
@@ -242,10 +238,8 @@ void onEvent(ev_t ev) {
 		Serial.println(F("EV_JOIN_FAILED"));
 		BLINK_INTERVAL = 100;
 		os_clearCallback(&lora_setup);
-		LMIC_shutdown();
 		Serial.println(F("Retry joining in 120 seconds"));
 		os_setTimedCallback(&lora_setup, os_getTime() + sec2osticks(RETRY_JOIN), lora_init);
-		comm_abort();
 		break;
 	case EV_TXCOMPLETE:
 		Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
@@ -279,7 +273,6 @@ void blinkfunc(osjob_t* job)
 
 enum comm_status_code comm_setup(void)
 {
-	isJoined = false;
 	Serial.println(F("Connecting to gateway..."));
 	// Blink job
 	os_setCallback(&blinkjob, blinkfunc);
@@ -303,7 +296,6 @@ enum comm_status_code comm_setup(void)
 		LMIC_shutdown();
 		Serial.println(F("Retry joining in RETRY_JOIN seconds"));
 		os_setTimedCallback(&lora_setup, os_getTime() + sec2osticks(RETRY_JOIN), lora_init); // Retry joining
-		comm_abort();
 		return COMM_ERR_RETRY_LATER;
 	}
 	else
@@ -316,18 +308,14 @@ enum comm_status_code comm_send_report(void)
 {
 	if (isJoined) // otherwise, "LMIC_setTxData" will call LMIC_startJoining even though we had an error returned by comm_setup
 	{
-		// Blink job
-		os_setCallback(&blinkjob, blinkfunc);
-
 		// Check if there is not a current TX/RX job running
 		if (LMIC.opmode & OP_TXRXPEND)
 		{
 			Serial.println(F("OP_TXRXPEND, not sending"));
-			BLINK_INTERVAL = 100;
 			os_clearCallback(&lora_report);
+			//comm_abort();
 			Serial.println(F("Trying again in TX_INTERVAL seconds"));
 			os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send);
-			comm_abort();
 			return COMM_ERR_RETRY_LATER;
 		}
 		else
@@ -344,35 +332,10 @@ enum comm_status_code comm_send_report(void)
 
 			if (code != 0) { // Something wrong
 				db("sampling aborted");
-				Serial.println(F("Error with OV box..."));
-				BLINK_INTERVAL = 100;
 				Serial1.end();
-			
-				// Envoi échantillon spécial d'erreur
-				uint8_t buff_spec[SAMPLE_SIZE] = {};
-				LMIC_setTxData2(1, buff_spec, sizeof(buff_spec), 0);
-
-				ostime_t start = os_getTime();
-				while ((!isSent) && (os_getTime() - start<TX_TIME))
-				{
-					os_runloop_once();
-				}
-
-				if (!isSent)
-				{
-					Serial.println(F("TX timeout"));
-					Serial1.end();
-					BLINK_INTERVAL = 100;
-					os_clearCallback(&lora_report);
-					Serial.println(F("Trying again in TX_INTERVAL seconds"));
-					os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send);
-					comm_abort();
-					return COMM_ERR_RETRY_LATER;
-				}
-				Serial.println(F("Packet queued"));
-				Serial.println(F("Scheduling next transmission..."));
-				os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send); // Next transmission in TX_INTERVAl secondes
-				comm_abort();
+				//comm_abort();
+				Serial.println(F("Trying again in TX_INTERVAL seconds"));
+				os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send);
 				return COMM_ERR_RETRY;
 			}
 
@@ -392,36 +355,28 @@ enum comm_status_code comm_send_report(void)
 			{
 				Serial.println(F("TX timeout"));
 				Serial1.end();
-				BLINK_INTERVAL = 100;
 				os_clearCallback(&lora_report);
+				//comm_abort();
 				Serial.println(F("Trying again in TX_INTERVAL seconds"));
 				os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send);
-				comm_abort();
 				return COMM_ERR_RETRY_LATER;
 			}
 			Serial1.end();
 			Serial.println(F("Scheduling next transmission..."));
-			os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send); // Next transmission in TX_INTERVAL secondes
-			comm_abort();
+			os_setTimedCallback(&lora_report, os_getTime() + sec2osticks(TX_INTERVAL), lora_send); // Next transmission in 60 secondes
+			//comm_abort();
 			return COMM_OK;
 		}
 	}
 	Serial.println(F("Not connected to gateway"));
-	Serial.println(F("Trying to join in RETRY_JOIN seconds"));
-	BLINK_INTERVAL = 100;
-	os_clearCallback(&lora_report);
-	LMIC_shutdown();
-	os_setTimedCallback(&lora_setup, os_getTime() + sec2osticks(RETRY_JOIN), lora_init);
-	comm_abort();
 	return COMM_ERR_RETRY_LATER;
 }
 
 enum comm_status_code comm_abort(void)
 {
-	Serial.println(F("Going into sleeping mode..."));
+	Serial.println(F("Abort"));
 	os_radio(RADIO_RST); // put radio to sleep
 	delay(2000);
-	os_clearCallback(&blinkjob);
 	digitalWrite(LED_BUILTIN, LOW);
 	return COMM_OK;
 }

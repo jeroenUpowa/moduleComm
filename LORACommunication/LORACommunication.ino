@@ -1,5 +1,6 @@
 
 
+
 #include "communication.h"
 #include "lora_jobs.h"
 
@@ -19,7 +20,7 @@ void setup()
 
 	digitalWrite(LED_BUILTIN, HIGH);
 	// Start Serial
-	//while (!Serial);
+	while (!Serial);
 	Serial.begin(115200);
 	delay(1000);
 	Serial.println(F("Starting"));
