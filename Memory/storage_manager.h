@@ -41,6 +41,8 @@ void stor_abort(void);
 
 void stor_end(void);
 
+uint8_t stor_test(void);
+
 /*
 	Ce fonction va stocker les données avec longueur 'len' dans la mémoire à partir de la
 	première addresse qui est libre.

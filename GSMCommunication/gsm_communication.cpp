@@ -19,16 +19,17 @@
 
 SoftwareSerial sim_serial = SoftwareSerial(SIM_TX, SIM_RX);
 
-#define SIM_APN "eseye.com"
-#define SIM_USER "user"
-#define SIM_PWD "pass"
+#define	SIM_APN "Nextm2m"
+//#define SIM_APN "eseye.com"
+#define SIM_USER "" //"user"
+#define SIM_PWD "" // "pass"
 
 #define BOXIDSTRING "testbox"
 
 // NOTE : DO NOT INCLUDE HTTP:// OR IT WILL FAIL SILENTLY
 //#define POST_URL "putsreq.com/WZlJISLFfouvdVe3G3pu"
-//#define POST_URL "posttestserver.com/post.php?dir=hen"
-#define POST_URL "90.112.154.97/submit.php?id=" BOXIDSTRING
+#define POST_URL "posttestserver.com/post.php?dir=jerUp"
+//#define POST_URL "90.112.154.97/submit.php?id=" BOXIDSTRING
 
 #define OK_REPLY "\r\nOK\r\n"
 

@@ -1,4 +1,4 @@
-#include "communication.h"
+#include "lora_communication.h"
 
 #ifdef LORA
 
@@ -128,7 +128,7 @@ inline uint8_t send_command(const struct command *comm, uint8_t *databuff) {
 	memcpy(databuff, recv + comm->datapos, comm->datalen);
 	db_module(); db_print("got :");
 #ifdef _DEBUG
-	for (int i; i < comm->datalen; i++) {
+	for (int i=0; i < comm->datalen; i++) {
 		Serial.print(" ");
 		Serial.print((byte)databuff[i], HEX);
 	}

@@ -43,8 +43,8 @@ struct command {
 	uint8_t datalen; // The lenght of the data
 };
 
-//const struct command cmd_OPID = { { 0x07, 0x01, 0x0e, 0x9a }, 4, ???}; // Unknown lenght
-//const struct command cmd_PPID = { { 0x07, 0x08, 0x14, 0xcb }, 4, ???};
+const struct command cmd_OPID = { { 0x07, 0x01, 0x0e, 0x9a }, 4, 21, 6, 14}; // OEM Product ID
+const struct command cmd_PPID = { { 0x07, 0x08, 0x14, 0xcb }, 4, 27, 6, 20}; // PAYG Product ID
 const struct command cmd_PS = { { 0x06, 0x09, 0x57 }, 3, 8, 5, 1 }; // PAYG state
 const struct command cmd_OCS = { { 0x06, 0x0a, 0xb5 }, 3, 8, 5, 1 }; // Output state
 const struct command cmd_SSC = { { 0x06, 0x0b, 0xeb }, 3, 8, 5, 1 }; // System Status Code
@@ -181,6 +181,21 @@ inline uint8_t get_data_from_box(uint8_t *buffer) {
 	return 0;
 }
 
+uint8_t get_opid_from_box(uint8_t *buffer) {
+	db("getting opid from box");
+	uint8_t tries = 0;
+
+	while (send_command(&cmd_OPID, buffer) && tries < MAX_TRIES) {
+		tries++;
+	}
+	if (tries == MAX_TRIES) { // We didn't make it
+		db("excessive retries");
+		return -1;
+	}
+	db("opid successful");
+	return 0;
+}
+
 
 inline uint8_t get_special_data_from_box(uint8_t *buffer) {
 	uint8_t recv[2];
@@ -290,6 +305,29 @@ void sampling_task(void) {
 	// Go back to sleep
 	db("end");
 	delay(100);
+}
+
+uint8_t sampling_test(uint8_t *buffer)
+{
+	Serial1.begin(38400);
+	uint8_t id[14];
+	uint8_t code = get_opid_from_box(id);
+	for (int i = 0; i < 14; i++)
+		if (code == 0)
+			buffer[i] = id[i];
+		else
+			buffer[i] = '0';
+
+	uint8_t sample[SAMPLE_SIZE];
+	code = code + get_data_from_box(sample);
+	for (int i = 0; i < SAMPLE_SIZE; i++)
+		if (code == 0)
+			buffer[i + 14] = sample[i];
+		else
+			buffer[i + 14] = '0';
+
+	Serial1.end();
+	return code;
 }
 
 

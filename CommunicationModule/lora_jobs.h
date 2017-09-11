@@ -3,7 +3,6 @@
 
 
 #include "debug.h"
-#include "lora_communication.h"
 #include <lmic.h>
 #include <hal/hal.h>
 #include <SPI.h>

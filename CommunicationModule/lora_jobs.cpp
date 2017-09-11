@@ -1,4 +1,4 @@
-#include "lora_communication.h"
+#include "communication.h"
 #include "lora_jobs.h"
 /*
 	Jobs for LoRa module

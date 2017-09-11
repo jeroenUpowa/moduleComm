@@ -45,13 +45,32 @@ void setup()
 	db("reporting setup");
 	reporting_setup();
 
+	uint8_t buffer[50];
+	uint8_t code = sampling_test(buffer);
+	Serial.print("sampling test result: ");
+	for (int i = 0; i < 33; i++) {
+		Serial.print(" ");
+		Serial.print(buffer[i], HEX);
+	}
+
+	Serial.println("");
+	Serial.println("Storage test");
+	code = stor_test();
+	buffer[33] = code;
+	if (code == 0)
+		db("stor test success");
+	else
+		db("stor test failed");
+
+	code = reporting_test(buffer, 34);
+
 	// // // // TEST ZONE
 
 	//sampling_task();
 	//delay(1000);
 	
 
-	//while (1);
+	while (1);
 	// // // //  // // // 
 
 	// Launch tasks

@@ -65,6 +65,88 @@ void stor_end(void) {
 	SPI.end();
 }
 
+void stor_erase_eeprom()
+{
+	db("Erase");
+	digitalWrite(SLAVESELECT, LOW);
+	SPI.transfer(WREN); //write enable
+	digitalWrite(SLAVESELECT, HIGH);
+	wait_memory(1000);
+
+	digitalWrite(SLAVESELECT, LOW);
+	SPI.transfer(CE); //write instruction
+	digitalWrite(SLAVESELECT, HIGH);
+	wait_memory(1000);
+}
+
+uint8_t stor_test(void) 
+{
+	stor_start();
+
+	uint16_t adr = 0x000100;
+	const uint16_t len = 10;
+	uint8_t buf[len];
+	uint8_t data[len];
+	for (int i = 0; i < len; i++)
+		data[i] = i;
+
+	uint8_t result = 0;
+
+	read_eeprom(buf, adr, len);
+#ifdef _DEBUG
+	for (int i = 0; i < len; i++) {
+		Serial.print(" ");
+		Serial.print(buf[i], HEX);
+	}
+	Serial.println("");
+#endif
+	stor_erase_eeprom();
+	read_eeprom(buf, adr, len);
+	for (int i = 0; i < len; i++) {
+#ifdef _DEBUG
+		Serial.print(" ");
+		Serial.print(buf[i], HEX);
+#endif
+		if (buf[i] != 0xFF)
+			result = -1;
+	}
+#ifdef _DEBUG
+	Serial.print("\nStorage : Write 1st\n");
+#endif
+	write_eeprom(data, adr, len);
+	read_eeprom(buf, adr, len);
+	for (int i = 0; i < len; i++) {
+#ifdef _DEBUG
+		Serial.print(" ");
+		Serial.print(buf[i], HEX);
+#endif
+		if (buf[i] != data[i])
+			result = -1;
+	}
+#ifdef _DEBUG
+	Serial.print("\nStorage : Write 2nd\n");
+#endif
+	// overwrite test
+	for (int i = 0; i < len; i++)
+		data[i] = 2*i;
+	write_eeprom(data, adr, len);
+	read_eeprom(buf, adr, len);
+	for (int i = 0; i < len; i++) {
+#ifdef _DEBUG
+		Serial.print(" ");
+		Serial.print(buf[i], HEX);
+#endif
+		if (buf[i] != data[i])
+			result = -1;
+	}
+#ifdef _DEBUG
+	Serial.print("\n");
+#endif
+	stor_end();
+	return result;
+}
+
+
 /*
 * Ce fonction va stocker un échantillon de données dans la mémoire à partir de la
 * première addresse qui est libre.
@@ -112,20 +194,6 @@ uint16_t stor_available(void)
 	}
 }
 
-
-void stor_erase_eeprom()
-{
-	db("Erase");
-	digitalWrite(SLAVESELECT, LOW);
-	SPI.transfer(WREN); //write enable
-	digitalWrite(SLAVESELECT, HIGH);
-	wait_memory(1000);
-
-	digitalWrite(SLAVESELECT, LOW);
-	SPI.transfer(CE); //write instruction
-	digitalWrite(SLAVESELECT, HIGH);
-	wait_memory(1000);
-}
 
 uint8_t memory_is_busy()
 {

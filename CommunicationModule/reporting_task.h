@@ -6,7 +6,7 @@
 #include "arduino.h"
 
 #ifdef GSM
-#define REPORTING_LOOPTIME  7200
+#define REPORTING_LOOPTIME  60
 #define MAX_BYTES_PER_REPORT 65536u
 #elif LORA
 #define REPORTING_LOOPTIME  600
@@ -27,6 +27,8 @@
 void reporting_setup(void);
 
 void reporting_task(void);
+
+uint8_t reporting_test(uint8_t *buffer, int length);
 
 
 

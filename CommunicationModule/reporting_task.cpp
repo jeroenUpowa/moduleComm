@@ -175,3 +175,55 @@ void reporting_task(void){
 	
 	return;
 }
+
+uint8_t reporting_test(uint8_t *buffer, int length) {
+	db("Start");
+	uint8_t tries = 0;
+	comm_status_code code;
+
+	while (tries < START_COMM_MAX_RETRIES) {
+		db("attempting to start report");
+		code = comm_start_report(length);
+
+		// If module error: Try a few more times and die
+		if (code == COMM_ERR_RETRY || code == COMM_ERR_RETRY_LATER) {
+			db("module error");
+			tries++;
+			continue;
+		}
+		// Else: We did it !
+		break;
+	}
+	if (tries == START_COMM_MAX_RETRIES) { // Failed to start report.
+		db("reached max retries on start");
+		return -1;
+	}
+	// Else :
+	db("module connected");
+
+
+	//	Fill in Comm report
+	comm_fill_report(buffer, length);
+
+	// Dispatch report
+	db("sending report");
+	tries = 0;
+	while (tries < START_COMM_MAX_RETRIES) {
+		code = comm_send_report();
+		if (code == COMM_ERR_RETRY || code == COMM_ERR_RETRY_LATER) {
+			db("module error, retrying");
+			tries++;
+			continue;
+		}
+		// else: We did it!
+		db("report sent");
+		break;
+	}
+	if (tries == START_COMM_MAX_RETRIES) { // Failed to send report.
+		db("reached max retries on send");
+		comm_abort();
+		return -1;
+	}
+	// Else : success
+	return 0;
+}
