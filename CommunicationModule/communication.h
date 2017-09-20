@@ -26,7 +26,7 @@ enum comm_status_code comm_setup(void);
 	Returns COMM_ERR_RETRY if the boot or some of the issued commands failed.
 	Returns COMM_ERR_RETRY_LATER if the timeout of the network subscription was reached
 */
-enum comm_status_code comm_start_report(uint16_t totallen);
+enum comm_status_code comm_start_report(uint16_t totallen, uint8_t type, char * opid);
 
 /*
 	Send binary data for the report contents
@@ -38,7 +38,7 @@ enum comm_status_code comm_fill_report(const uint8_t *buffer, int length);
 	Issue the report and await for results, then shut down the module
 	Returns COMM_OK on a successfuly sent report. Returns COMM_ERR_RETRY on module error. Returns COMM_ERR_RETRY_LATER on timeouts and connection errors
 */
-enum comm_status_code comm_send_report(void);
+enum comm_status_code comm_send_report(uint8_t *buffer);
 
 /*
 	Stop any on-going opperation and shut down the module. Performs a hardware reset if the module is not responding (might take several seconds)

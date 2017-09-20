@@ -27,6 +27,12 @@ void reschedule(void) {
 	}
 }
 
+char * getIdBox(void) {
+	char buff[15] = "";
+	uint8_t code = get_opid_from_box((uint8_t *) buff);
+	return buff;
+}
+
 /*
 	Check available data,
 	Start report,
@@ -70,7 +76,7 @@ void reporting_task(void){
 	tries = 0;
 	while (tries < START_COMM_MAX_RETRIES) {
 		db("attempting to start report");
-		code = comm_start_report(available);
+		code = comm_start_report(available, 2, getIdBox()); // 2 == post data
 
 		// If module error: Try a few more times and die
 		if (code == COMM_ERR_RETRY) {
@@ -131,8 +137,12 @@ void reporting_task(void){
 	// Dispatch report
 	db("sending report");
 	tries = 0;
+	uint8_t reply[301];
+	for (int i = 0; i < 300; i++)
+		reply[i] = '0';
+	reply[300] = 0;
 	while (tries < START_COMM_MAX_RETRIES) {
-		code = comm_send_report();
+		code = comm_send_report(reply);
 		// If connection error: Reschedule
 		if (code == COMM_ERR_RETRY_LATER) {
 			db("connection error");
@@ -183,7 +193,7 @@ uint8_t reporting_test(uint8_t *buffer, int length) {
 
 	while (tries < START_COMM_MAX_RETRIES) {
 		db("attempting to start report");
-		code = comm_start_report(length);
+		code = comm_start_report(length, 1, getIdBox()); // 1 = test
 
 		// If module error: Try a few more times and die
 		if (code == COMM_ERR_RETRY || code == COMM_ERR_RETRY_LATER) {
@@ -196,6 +206,7 @@ uint8_t reporting_test(uint8_t *buffer, int length) {
 	}
 	if (tries == START_COMM_MAX_RETRIES) { // Failed to start report.
 		db("reached max retries on start");
+		comm_abort();
 		return -1;
 	}
 	// Else :
@@ -208,8 +219,12 @@ uint8_t reporting_test(uint8_t *buffer, int length) {
 	// Dispatch report
 	db("sending report");
 	tries = 0;
+	uint8_t reply[50];
+	for (int i = 0; i < 49; i++)
+		reply[i] = '0';
+	reply[49] = 0;
 	while (tries < START_COMM_MAX_RETRIES) {
-		code = comm_send_report();
+		code = comm_send_report(reply);
 		if (code == COMM_ERR_RETRY || code == COMM_ERR_RETRY_LATER) {
 			db("module error, retrying");
 			tries++;
@@ -225,5 +240,30 @@ uint8_t reporting_test(uint8_t *buffer, int length) {
 		return -1;
 	}
 	// Else : success
-	return 0;
+#ifdef _DEBUG
+	Serial.print("Server reply: ");
+	Serial.print((char *) reply);
+	Serial.println();
+#endif // DEBUG
+
+	char error[] = { 'E', 'R', 'R', 'O', 'R' };
+	char ok_ret[] = { 'O', 'K', ' ', ':', ' ', 'r', 'e', 't', 'e', 's', 't' };
+	char ok_rep[] = { 'O', 'K', ' ', ':', ' ', 'r', 'e', 'p', 'o', 'r', 't' };
+
+	if (strncmp(ok_rep, (char *)reply, sizeof ok_rep) == 0) {
+		db("got start report reply");
+		return COMMENCE_REPORTING;
+	} 
+	else if (strncmp(ok_ret, (char *)reply, sizeof ok_ret) == 0) {
+		db("got ok retest reply");
+		return RETEST;
+	}
+	else if (strncmp(error, (char *)reply, sizeof error) == 0) {
+		db("got error reply");
+		return RETEST;
+	}
+	else {
+		db("got unknown replytype");
+		return RETEST;
+	}
 }

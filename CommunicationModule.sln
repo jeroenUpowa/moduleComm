@@ -10,6 +10,10 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GSMCommunication", "GSMCommunication\GSMCommunication.vcxproj", "{C5F80730-F44F-4478-BDAE-6634EFC2CA88}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LORACommunication", "LORACommunication\LORACommunication.vcxproj", "{446EB7B9-9DEE-4D7B-B99B-C60CE16F6EAA}"
+	ProjectSection(ProjectDependencies) = postProject
+		{BCC60572-A200-411D-8BDF-75D8E110985D} = {BCC60572-A200-411D-8BDF-75D8E110985D}
+		{C7098C82-508E-4AA6-A038-D7467FA22EDB} = {C7098C82-508E-4AA6-A038-D7467FA22EDB}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CommunicationModule", "CommunicationModule\CommunicationModule.vcxproj", "{ECB975A0-7FB0-48C9-AFF0-391D52DDF87A}"
 	ProjectSection(ProjectDependencies) = postProject

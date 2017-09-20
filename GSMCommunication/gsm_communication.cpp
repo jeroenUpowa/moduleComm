@@ -20,16 +20,23 @@
 SoftwareSerial sim_serial = SoftwareSerial(SIM_TX, SIM_RX);
 
 #define	SIM_APN "Nextm2m"
+//#define SIM_APN "aer.iot.com"
 //#define SIM_APN "eseye.com"
-#define SIM_USER "" //"user"
-#define SIM_PWD "" // "pass"
+#define SIM_USER "" //"user" -> for eseye.com
+#define SIM_PWD "" // "pass" -> for eseye.com
 
 #define BOXIDSTRING "testbox"
+#define MODIDSTRING "00000009"
 
 // NOTE : DO NOT INCLUDE HTTP:// OR IT WILL FAIL SILENTLY
 //#define POST_URL "putsreq.com/WZlJISLFfouvdVe3G3pu"
-#define POST_URL "posttestserver.com/post.php?dir=jerUp"
+//#define POST_URL "posttestserver.com/post.php?dir=jerUpPost"
 //#define POST_URL "90.112.154.97/submit.php?id=" BOXIDSTRING
+#define POST_URL "46.101.211.161:8080/uwipModCom-war/PostToDb?ID=" MODIDSTRING "&boxID="
+
+//#define TEST_URL "90.112.154.97/submitTest.php?id=" BOXIDSTRING
+//#define TEST_URL "posttestserver.com/post.php?dir=jerUpTest"
+#define TEST_URL "46.101.211.161:8080/uwipModCom-war/PostTestResults?ID=" MODIDSTRING
 
 #define OK_REPLY "\r\nOK\r\n"
 
@@ -157,7 +164,7 @@ enum comm_status_code power_off(void) {
 	return code;
 }
 
-enum comm_status_code comm_start_report(uint16_t totallen) {
+enum comm_status_code comm_start_report(uint16_t totallen, uint8_t type, char * opid) {
 	db("Start report");
 
 	// Start Serial
@@ -210,10 +217,31 @@ enum comm_status_code comm_start_report(uint16_t totallen) {
 	flush_input();
 	db("Configuring HTTP module");
 	if (get_reply_P(PSTR("AT+HTTPINIT"), PSTR(OK_REPLY), 200) != COMM_OK
-		|| get_reply_P(PSTR("AT+HTTPPARA=\"CID\",1"), PSTR(OK_REPLY), 200) != COMM_OK
-		|| get_reply_P(PSTR("AT+HTTPPARA=\"URL\",\"" POST_URL "\""), PSTR(OK_REPLY), 200) != COMM_OK) {
+		|| get_reply_P(PSTR("AT+HTTPPARA=\"CID\",1"), PSTR(OK_REPLY), 200) != COMM_OK) {
 		db("Failed to configure HTTP module");
 		return COMM_ERR_RETRY;
+	}
+	if (type == 1) {	// Test results
+		if (get_reply_P(PSTR("AT+HTTPPARA=\"URL\",\"" TEST_URL "\""), PSTR(OK_REPLY), 200) != COMM_OK) {
+			db("Failed to configure HTTP module");
+			return COMM_ERR_RETRY;
+		}
+	}
+	else if (type == 2) {	// Post data
+		char post_url[200];
+		strcpy(post_url, "AT+HTTPPARA=\"URL\",\"" POST_URL);
+		strcat(post_url, opid);
+		db_print("posturl: ");
+		db_println(post_url);
+		char contLen[30];
+		sprintf(contLen, "&CL=%u\"", totallen);
+		strcat(post_url, contLen);
+		db_print("posturl: ");
+		db_println(post_url);
+		if (get_reply(post_url, OK_REPLY, 200) != COMM_OK) {
+			db("Failed to configure HTTP module");
+			return COMM_ERR_RETRY;
+		}
 	}
 	flush_input();
 	db("Starting HTTPDATA session");
@@ -238,7 +266,7 @@ enum comm_status_code comm_fill_report(const uint8_t *buffer, int lenght) {
 }
 
 
-enum comm_status_code comm_send_report(void) {
+enum comm_status_code comm_send_report(uint8_t *buffer) {
 	db("Send Report");
 	flush_input();
 	if (get_reply_P(PSTR("AT+HTTPACTION=1"), PSTR(OK_REPLY), 500) != COMM_OK) { // Do POST
@@ -259,8 +287,41 @@ enum comm_status_code comm_send_report(void) {
 	while (!sim_serial.available())delay(1);
 	http_code[2] = sim_serial.read();
 
-	http_code[3] = 0;
+	http_code[3] = 0; // sim_serial.read();
 	db_module(); db_print(F("HTTP code : ")); db_println(http_code);
+	
+	// get length of the reply
+	uint16_t length = 0;
+	while (sim_serial.available()) {
+		uint8_t value = sim_serial.read();
+		if(value >= '0' && value <= '9')
+			length = length * 10 + (value - '0');
+		delay(1);
+	}
+	db_print("length: "); db_println(length);
+	//length = (length > 50) ? 50 : length; // TODO: max length of reply
+	
+	char str[20];
+	sprintf(str, "AT+HTTPREAD=0,%u", length);
+	char rep[20];
+	sprintf(rep, "+HTTPREAD: %u\r\n", length);
+	get_reply(str, rep, 500);
+	uint8_t index = 0;
+	uint16_t timeout = 500;
+	while (timeout > 0 && index < length) {
+		while (sim_serial.available() && index < length) {
+			uint8_t reply = sim_serial.read();
+			db_print((char)reply);
+			buffer[index] = reply;
+			index++;
+		}
+		delay(1);
+		timeout--;
+	}
+	db("flush");
+	flush_input();
+	// get_reply(str, OK_REPLY, 500);
+
 
 	get_reply_P(PSTR("AT+HTTPTERM"), PSTR(OK_REPLY), 500);  // No need for error handling
 	//get_reply("AT+SAPBR=0,1", OK_REPLY, 500);  // We don't really have to, happens on shutdown 

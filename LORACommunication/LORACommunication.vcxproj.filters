@@ -24,6 +24,12 @@
     <ClInclude Include="lora_communication.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\CommunicationModule\sampling_task.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Memory\storage_manager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="LORACommunication.ino" />
@@ -33,6 +39,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="lora_jobs.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\CommunicationModule\sampling_task.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Memory\storage_manager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

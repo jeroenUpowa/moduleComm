@@ -1,6 +1,9 @@
 #include <lmic.h>
 #include <SPI.h>
 
+#define VERSION    "1.0"
+#define DISTR_DATE "2017-09-14"
+
 
 #define DB_MODULE "Communication Module"
 #include "debug.h"
@@ -14,6 +17,8 @@
 #elif LORA
 #ifndef __SAMD21G18A__
 #error Wrong board !
+#include "lora_communication.h"
+#include "lora_jobs.h"
 #endif
 #else
 #error Define either GSM or LORA on the project settings !
@@ -33,8 +38,13 @@ void setup()
 	db_wait();
 
 	db("Starting");
-	db("gsm setup");
-	comm_setup();
+	db("comm setup");
+	comm_status_code comm_code = comm_setup();
+	while (comm_code != COMM_OK) {
+		db("comm setup - failed");
+		db("comm setup - retry");
+		comm_code = comm_setup();
+	}
 
 	db("storage setup");
 	stor_setup();
@@ -45,32 +55,29 @@ void setup()
 	db("reporting setup");
 	reporting_setup();
 
-	uint8_t buffer[50];
-	uint8_t code = sampling_test(buffer);
-	Serial.print("sampling test result: ");
-	for (int i = 0; i < 33; i++) {
-		Serial.print(" ");
-		Serial.print(buffer[i], HEX);
+	db("start testing");
+	uint8_t code = 0; // do_tests();
+
+	while (code != COMMENCE_REPORTING)
+	{
+		db("tests failed");
+		delay(20000);
+		db("retest");
+		code = do_tests();
 	}
-
-	Serial.println("");
-	Serial.println("Storage test");
-	code = stor_test();
-	buffer[33] = code;
-	if (code == 0)
-		db("stor test success");
-	else
-		db("stor test failed");
-
-	code = reporting_test(buffer, 34);
-
-	// // // // TEST ZONE
-
-	//sampling_task();
-	//delay(1000);
+	db("tests finished");
 	
+	// // // // TEST ZONE
+//	for (int i = 0; i < 120; i++) {
+//		db_print("i: ");
+//		db_println(i);
+//		sampling_task();
+//		delay(500);
+//	}
 
-	while (1);
+//	reporting_task();
+//	db("reporting finished");
+//	while (1);
 	// // // //  // // // 
 
 	// Launch tasks
@@ -92,4 +99,31 @@ void setup()
 void loop()
 {
 
+}
+
+uint8_t do_tests(void)
+{
+	uint8_t buffer[50];
+	uint8_t code = sampling_test(buffer);
+#ifdef _DEBUG
+	Serial.print("sampling test result: ");
+	for (int i = 0; i < 33; i++) {
+		Serial.print(" ");
+		Serial.print(buffer[i], HEX);
+	}
+	Serial.println("");
+	Serial.println("Storage test");
+#endif
+	code = stor_test();
+	buffer[33] = code;
+#ifdef _DEBUG
+	if (code == 'O')
+		db("stor test success");
+	else
+		db("stor test failed");
+#endif
+	buffer[34] = 0;
+
+	code = reporting_test(buffer, 35);
+	return code;
 }

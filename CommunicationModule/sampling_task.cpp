@@ -80,6 +80,15 @@ const struct command * const msg_commands[] = {
 	&cmd_BC
 };
 
+const struct command * const paygState_commands[] = {
+	&cmd_HTOP,
+	&cmd_RPD,
+	&cmd_ACC,
+	&cmd_PS,
+	&cmd_OCS,
+	&cmd_SSC
+};
+
 void sampling_setup(void) {
 	db("Setup");
 
@@ -163,37 +172,97 @@ inline uint8_t send_command(const struct command *comm, uint8_t *databuff) {
 
 inline uint8_t get_data_from_box(uint8_t *buffer) {
 	db("getting data from box");
+
+	// (Re)Configure serial interface to the box
+	Serial1.begin(38400);
+
 	// run all sampling commands
+	uint8_t tries = 0;
 	for (int i = 0; i < 10; i++) {
-		uint8_t tries = 0;
-		
+		tries = 0;
 		while (send_command(msg_commands[i], buffer) && tries < MAX_TRIES) {
 			tries++;
 		}
 		if (tries == MAX_TRIES) { // We didn't make it
 			db("excessive retries");
-			return -1;
+			break;
 		}
 
 		buffer += msg_commands[i]->datalen;
 	}
-	db("sampling successful");
-	return 0;
+	uint8_t result = 0;
+	if (tries == MAX_TRIES) {
+		db("excessive retries - return 0 sample");
+		for (int j = 0; j < SAMPLE_SIZE; j++) {
+			buffer[j] = 0;
+		}
+		result = -1;
+	}
+	else {
+		db("sampling successful");
+	}
+	Serial1.end();
+	return result;
+}
+
+uint8_t get_paygState_from_box(uint8_t *buffer) {
+	db("getting paygstate from box");
+
+	// (Re)Configure serial interface to the box
+	Serial1.begin(38400);
+
+	// run all paygstate commands
+	uint8_t tries = 0;
+	for (int i = 0; i < 6; i++) {
+		tries = 0;
+		while (send_command(paygState_commands[i], buffer) && tries < MAX_TRIES) {
+			tries++;
+		}
+		if (tries == MAX_TRIES) { // We didn't make it
+			break;
+		}
+
+		buffer += paygState_commands[i]->datalen;
+	} 
+	uint8_t result = 0;
+	if (tries == MAX_TRIES) {
+		db("excessive retries - return 0 payg state");
+		for (int j = 0; j < PAYG_SIZE; j++) {
+			buffer[j] = 0;
+		}
+		result = -1;
+	}
+	else {
+		db("paygstate successful");
+	}
+	Serial1.end();
+	return result;
 }
 
 uint8_t get_opid_from_box(uint8_t *buffer) {
 	db("getting opid from box");
-	uint8_t tries = 0;
 
+	// (Re)Configure serial interface to the box
+	Serial1.begin(38400);
+	
+	uint8_t tries = 0;
 	while (send_command(&cmd_OPID, buffer) && tries < MAX_TRIES) {
 		tries++;
 	}
+
+	uint8_t result = 0;
 	if (tries == MAX_TRIES) { // We didn't make it
-		db("excessive retries");
-		return -1;
+		db("excessive retries - return 0 opid");
+		for (int j = 0; j < OPID_SIZE; j++) {
+			buffer[j] = '0';
+		}
+		result = -1;
 	}
-	db("opid successful");
-	return 0;
+	else {
+		db("opid successful");
+	}
+	Serial1.end();
+	return result;
 }
 
 
@@ -280,27 +349,15 @@ void sampling_task(void) {
 		stor_abort();
 		return;
 	}
-	// (Re)Configure serial interface to the box
-	Serial1.begin(38400);
-	
+
 	// Get sample data
 	uint8_t buff[SAMPLE_SIZE];
-	//uint8_t code = get_dummy_data(buff);
 	uint8_t code = get_data_from_box(buff);
-	//uint8_t code = get_special_data_from_box(buff);
-
-	if (code != 0) { // Something wrong
-		db("sampling failed - write failed to memory");
-		for (int j = 0; j < SAMPLE_SIZE; j++)
-			buff[j] = '0';
-	}
 
 	// Store this sample to the external eeprom
 	db("writting sample to storage");
 	stor_write(buff, SAMPLE_SIZE);
-
 	stor_end();
-	Serial1.end();
 
 	// Go back to sleep
 	db("end");
@@ -309,24 +366,16 @@ void sampling_task(void) {
 
 uint8_t sampling_test(uint8_t *buffer)
 {
-	Serial1.begin(38400);
 	uint8_t id[14];
 	uint8_t code = get_opid_from_box(id);
-	for (int i = 0; i < 14; i++)
-		if (code == 0)
-			buffer[i] = id[i];
-		else
-			buffer[i] = '0';
-
+	for (int i = 0; i < 14; i++) {
+		buffer[i] = id[i];
+	}
 	uint8_t sample[SAMPLE_SIZE];
 	code = code + get_data_from_box(sample);
-	for (int i = 0; i < SAMPLE_SIZE; i++)
-		if (code == 0)
-			buffer[i + 14] = sample[i];
-		else
-			buffer[i + 14] = '0';
-
-	Serial1.end();
+	for (int i = 0; i < SAMPLE_SIZE; i++) {
+		buffer[i + 14] = sample[i];
+	}
 	return code;
 }
 

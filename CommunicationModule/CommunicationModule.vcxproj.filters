@@ -36,6 +36,9 @@
     <ClInclude Include="__vm\.CommunicationModule.vsarduino.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\LORACommunication\lora_communication.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\GSMCommunication\gsm_communication.cpp">

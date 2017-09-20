@@ -90,7 +90,7 @@ uint8_t stor_test(void)
 	for (int i = 0; i < len; i++)
 		data[i] = i;
 
-	uint8_t result = 0;
+	uint8_t result = 'O';
 
 	read_eeprom(buf, adr, len);
 #ifdef _DEBUG

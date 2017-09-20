@@ -26,7 +26,7 @@ enum comm_status_code comm_setup(void);
 	Returns COMM_ERR_RETRY if the boot or some of the issued commands failed.
 	Returns COMM_ERR_RETRY_LATER if the timeout of the network subscription was reached
 */
-enum comm_status_code comm_start_report(uint16_t totallen);
+enum comm_status_code comm_start_report(uint16_t totallen, uint8_t type);
 
 /*
 	Send binary data for the report contents
