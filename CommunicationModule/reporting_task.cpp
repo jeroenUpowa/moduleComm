@@ -33,6 +33,22 @@ char * getIdBox(void) {
 	return buff;
 }
 
+char * getPaygstate(void) {
+	char buff[31] = "";
+	uint8_t temp[15];
+	uint8_t code = get_paygState_from_box(temp);
+
+	for (int i=0; i < sizeof(temp); ++i) {
+		char hex[3];
+		int integer = (int) temp[i];
+		sprintf(hex, "%2.2x", integer);
+		strcat(buff, hex);
+	}
+
+	db_print("content of buff: "); db_println(buff);
+	return buff;
+}
+
 /*
 	Check available data,
 	Start report,
@@ -47,27 +63,34 @@ void reporting_task(void){
 	// Check
 	// Turn on memory
 	uint8_t tries = 0;
+	boolean memfailed = false;
 	while (stor_start() && tries < STOR_FUN_MAX_RETRIES) tries++;
 	if (tries == STOR_FUN_MAX_RETRIES) {
 		db("Failed to start memory");
 		stor_abort();
-		return;
+		memfailed = true;
 	}
 
 	// Query available data
 	db("querrying data");
-	uint16_t available = stor_available();
+	uint16_t available = 0;
+	if (memfailed)
+		available = SAMPLE_SIZE;
+	else
+		available = stor_available();
+
 	if (available == 0) { // If not enough samples available, abort
 		db("not enough samples, abort");
 		stor_abort();
-		return;
+		memfailed = true;
+		available = SAMPLE_SIZE;
 	}
 	// If too many samples, trim and signal that the task has to be re-run later
 	bool samples_remaining = false;
 	if (available > MAX_BYTES_PER_REPORT) {
 		db("too many samples, trim");
 		samples_remaining = true;
-		available = MAX_BYTES_PER_REPORT - MAX_BYTES_PER_REPORT%SAMPLE_SIZE; // Fit a full number of samples
+		available = MAX_BYTES_PER_REPORT - (MAX_BYTES_PER_REPORT % SAMPLE_SIZE); // Fit a full number of samples
 	}
 	db("got amount of data");
 
@@ -76,7 +99,22 @@ void reporting_task(void){
 	tries = 0;
 	while (tries < START_COMM_MAX_RETRIES) {
 		db("attempting to start report");
-		code = comm_start_report(available, 2, getIdBox()); // 2 == post data
+
+		char url_add[100];
+		strcpy(url_add, getIdBox());
+		char contLen[30];
+		sprintf(contLen, "&CL=%u", available);
+		strcat(url_add, contLen);
+		db_print("url add: ");
+		db_println(url_add);
+		char paygState[50];
+		strcat(url_add, "&PGS=");
+		strcat(url_add, getPaygstate());
+		strcat(url_add, "\"");
+		db_print("url add: ");
+		db_println(url_add);
+
+		code = comm_start_report(available, 2, url_add); // 2 == post data
 
 		// If module error: Try a few more times and die
 		if (code == COMM_ERR_RETRY) {
@@ -90,7 +128,8 @@ void reporting_task(void){
 			db("connection failed");
 			reschedule();
 			//comm_abort(); RETRY_LATER shuts down the module already
-			stor_abort();
+			if(!memfailed)
+				stor_abort();
 			return;
 		}
 		
@@ -101,7 +140,8 @@ void reporting_task(void){
 		db("reached max retries on start");
 		reschedule();
 		comm_abort();
-		stor_abort();
+		if(!memfailed)
+			stor_abort();
 		return;
 	}
 	// Else :
@@ -117,17 +157,22 @@ void reporting_task(void){
 			fetchlen = available;
 		}
 
-		uint16_t readlen;
-		tries = 0;
-		while ((readlen = stor_read(buffer, fetchlen)) && readlen != fetchlen && tries < STOR_FUN_MAX_RETRIES) tries++;
-		if (tries == STOR_FUN_MAX_RETRIES) {
-			db("Failed to read memory");
-			reschedule();
-			comm_abort();
-			stor_abort();
-			return;
+		if (memfailed) {
+			for (int i = 0; i < SAMPLE_SIZE; i++)
+				buffer[i] = 101;
 		}
-
+		else {
+			uint16_t readlen;
+			tries = 0;
+			while ((readlen = stor_read(buffer, fetchlen)) && readlen != fetchlen && tries < STOR_FUN_MAX_RETRIES) tries++;
+			if (tries == STOR_FUN_MAX_RETRIES) {
+				db("Failed to read memory");
+				reschedule();
+				comm_abort();
+				stor_abort();
+				return;
+			}
+		}
 		available -= fetchlen;
 
 	//	Fill in Comm report
@@ -148,7 +193,8 @@ void reporting_task(void){
 			db("connection error");
 			reschedule();
 			//comm_abort(); RETRY_LATER shuts down the module already
-			stor_abort();
+			if(!memfailed)
+				stor_abort();
 			return;
 		}
 		// If other errors: Retry
@@ -164,14 +210,20 @@ void reporting_task(void){
 	if (tries == START_COMM_MAX_RETRIES) { // Failed to send report.
 		db("reached max retries on send");
 		comm_abort();
-		stor_abort();
+		if(!memfailed)
+			stor_abort();
 		return;
 	}
 	// Else : success
 	
 	// Commit read head
-	db("confirming read data");
-	stor_end();
+	if (memfailed) {
+		db("Finished - memfailed");
+	}
+	else {
+		db("confirming read data");
+		stor_end();
+	}
 	// Communication closed on successful send_report :)
 
 	// Samples left to send ? Time slot left to send ?
@@ -191,27 +243,16 @@ uint8_t reporting_test(uint8_t *buffer, int length) {
 	uint8_t tries = 0;
 	comm_status_code code;
 
-	while (tries < START_COMM_MAX_RETRIES) {
-		db("attempting to start report");
-		code = comm_start_report(length, 1, getIdBox()); // 1 = test
+	db("attempting to start report");
+	code = comm_start_report(length, 1, getIdBox()); // 1 = test
 
-		// If module error: Try a few more times and die
-		if (code == COMM_ERR_RETRY || code == COMM_ERR_RETRY_LATER) {
-			db("module error");
-			tries++;
-			continue;
-		}
-		// Else: We did it !
-		break;
-	}
-	if (tries == START_COMM_MAX_RETRIES) { // Failed to start report.
-		db("reached max retries on start");
+	// If module error: stop
+	if (code == COMM_ERR_RETRY || code == COMM_ERR_RETRY_LATER) {
 		comm_abort();
-		return -1;
+		return RETEST;
 	}
 	// Else :
 	db("module connected");
-
 
 	//	Fill in Comm report
 	comm_fill_report(buffer, length);
@@ -237,7 +278,7 @@ uint8_t reporting_test(uint8_t *buffer, int length) {
 	if (tries == START_COMM_MAX_RETRIES) { // Failed to send report.
 		db("reached max retries on send");
 		comm_abort();
-		return -1;
+		return RETEST;
 	}
 	// Else : success
 #ifdef _DEBUG

@@ -1,8 +1,6 @@
 
 #include "lora_communication.h"
 #include "lora_jobs.h"
-#include "storage_manager.h"
-#include "sampling_task.h"
 
 #define DB_MODULE "LORA Communication"
 

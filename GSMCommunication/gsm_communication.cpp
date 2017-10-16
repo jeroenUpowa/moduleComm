@@ -20,13 +20,13 @@
 SoftwareSerial sim_serial = SoftwareSerial(SIM_TX, SIM_RX);
 
 #define	SIM_APN "Nextm2m"
-//#define SIM_APN "aer.iot.com"
-//#define SIM_APN "eseye.com"
-#define SIM_USER "" //"user" -> for eseye.com
-#define SIM_PWD "" // "pass" -> for eseye.com
+//#define SIM_APN "iot.aer.net"
 
-#define BOXIDSTRING "testbox"
-#define MODIDSTRING "00000009"
+#define SIM_USER ""
+#define SIM_PWD ""
+
+//#define BOXIDSTRING "testbox"
+#define MODIDSTRING "00000018"
 
 // NOTE : DO NOT INCLUDE HTTP:// OR IT WILL FAIL SILENTLY
 //#define POST_URL "putsreq.com/WZlJISLFfouvdVe3G3pu"
@@ -34,9 +34,14 @@ SoftwareSerial sim_serial = SoftwareSerial(SIM_TX, SIM_RX);
 //#define POST_URL "90.112.154.97/submit.php?id=" BOXIDSTRING
 #define POST_URL "46.101.211.161:8080/uwipModCom-war/PostToDb?ID=" MODIDSTRING "&boxID="
 
+//#define POST_URL "46.101.211.161:8080/?ID=" MODIDSTRING "&boxID="
+//#define POST_URL "qsdgqsdfgsd.com/?ID=" MODIDSTRING "&boxID="
+
+
 //#define TEST_URL "90.112.154.97/submitTest.php?id=" BOXIDSTRING
 //#define TEST_URL "posttestserver.com/post.php?dir=jerUpTest"
 #define TEST_URL "46.101.211.161:8080/uwipModCom-war/PostTestResults?ID=" MODIDSTRING
+//#define TEST_URL "46.101.211.161:8080/uwipModCom-war/PostTestResultsTEST?ID=" MODIDSTRING
 
 #define OK_REPLY "\r\nOK\r\n"
 
@@ -150,6 +155,7 @@ enum comm_status_code power_on(void) {
 		}
 		tries++;
 	}
+	module_is_on = false;
 	return COMM_ERR_RETRY;
 }
 
@@ -159,18 +165,18 @@ enum comm_status_code power_off(void) {
 	if (code == COMM_OK) {
 		delay(1200);
 		flush_input();
-		module_is_on = false;
 	}
+	module_is_on = false;
 	return code;
 }
 
-enum comm_status_code comm_start_report(uint16_t totallen, uint8_t type, char * opid) {
+enum comm_status_code comm_start_report(uint16_t totallen, uint8_t type, char * url_add) {
 	db("Start report");
 
 	// Start Serial
 	db("starting serial");
 	sim_serial.begin(9600);
-
+	delay(500);
 	uint16_t timeout;
 	timeout = 60000;  // timeout for GPRS connection
 
@@ -184,7 +190,7 @@ enum comm_status_code comm_start_report(uint16_t totallen, uint8_t type, char * 
 	// While not connection timeout
 	db("Attempting connection");
 	while (timeout > 0) {
-		// Querry GPRS availability
+		// Query GPRS availability
 		flush_input();
 		if (get_reply_P(PSTR("AT+CGATT?"), PSTR("+CGATT: 1"), 200) == COMM_OK) {
 			break;
@@ -209,8 +215,14 @@ enum comm_status_code comm_start_report(uint16_t totallen, uint8_t type, char * 
 	if (get_reply_P(PSTR("AT+SAPBR=3,1,\"Contype\", \"GPRS\""), PSTR(OK_REPLY), 200) != COMM_OK
 		|| get_reply_P(PSTR("AT+SAPBR=3,1,\"APN\", \"" SIM_APN "\""), PSTR(OK_REPLY), 200) != COMM_OK
 		|| get_reply_P(PSTR("AT+SAPBR=3,1,\"USER\", \"" SIM_USER "\""), PSTR(OK_REPLY), 200) != COMM_OK
-		|| get_reply_P(PSTR("AT+SAPBR=3,1,\"PWD\", \"" SIM_PWD "\""), PSTR(OK_REPLY), 200) != COMM_OK
-		|| get_reply_P(PSTR("AT+SAPBR=1,1"), PSTR(OK_REPLY), 30000) != COMM_OK) {  // 1.85s max connection bringup time on the specifications, but sometimes...
+		|| get_reply_P(PSTR("AT+SAPBR=3,1,\"PWD\", \"" SIM_PWD "\""), PSTR(OK_REPLY), 200) != COMM_OK) {
+		db("Failed to configure APN");
+		return COMM_ERR_RETRY;
+	}
+	if(get_reply_P(PSTR("AT+SAPBR=2,1"), PSTR("+SAPBR: 1,1"), 500) == COMM_OK) {
+		// Module already connected
+	} 
+	else if( get_reply_P(PSTR("AT+SAPBR=1,1"), PSTR(OK_REPLY), 30000) != COMM_OK) {  // 1.85s max connection bringup time on the specifications, but sometimes...
 		db("Failed to configure APN");
 		return COMM_ERR_RETRY;
 	}
@@ -230,12 +242,7 @@ enum comm_status_code comm_start_report(uint16_t totallen, uint8_t type, char * 
 	else if (type == 2) {	// Post data
 		char post_url[200];
 		strcpy(post_url, "AT+HTTPPARA=\"URL\",\"" POST_URL);
-		strcat(post_url, opid);
-		db_print("posturl: ");
-		db_println(post_url);
-		char contLen[30];
-		sprintf(contLen, "&CL=%u\"", totallen);
-		strcat(post_url, contLen);
+		strcat(post_url, url_add);
 		db_print("posturl: ");
 		db_println(post_url);
 		if (get_reply(post_url, OK_REPLY, 200) != COMM_OK) {
@@ -279,15 +286,20 @@ enum comm_status_code comm_send_report(uint8_t *buffer) {
 		return COMM_ERR_RETRY_LATER;						// Assume the data was lost (got "ok" on action)
 	}
 	db("Got answer from request");
-	char http_code[4];
-	while (!sim_serial.available())delay(1);
-	http_code[0] = sim_serial.read();
-	while (!sim_serial.available())delay(1);
-	http_code[1] = sim_serial.read();
-	while (!sim_serial.available())delay(1);
-	http_code[2] = sim_serial.read();
-
-	http_code[3] = 0; // sim_serial.read();
+	char http_code[4] = { '1', '1', '1', 0 };
+	uint16_t timeout = 500;
+	uint8_t index = 0;
+	while (timeout > 0 && index < 3) {
+		while (sim_serial.available() && index < 3) {
+			uint8_t reply = sim_serial.read();
+			db_print((char)reply);
+			http_code[index] = reply;
+			index++;
+		}
+		delay(1);
+		timeout--;
+	}
+	http_code[3] = 0;
 	db_module(); db_print(F("HTTP code : ")); db_println(http_code);
 	
 	// get length of the reply
@@ -299,15 +311,16 @@ enum comm_status_code comm_send_report(uint8_t *buffer) {
 		delay(1);
 	}
 	db_print("length: "); db_println(length);
-	//length = (length > 50) ? 50 : length; // TODO: max length of reply
+	length = (length > 50) ? 50 : length; // TODO: max length of reply
 	
 	char str[20];
 	sprintf(str, "AT+HTTPREAD=0,%u", length);
 	char rep[20];
 	sprintf(rep, "+HTTPREAD: %u\r\n", length);
 	get_reply(str, rep, 500);
-	uint8_t index = 0;
-	uint16_t timeout = 500;
+	
+	index = 0;
+	timeout = 500;
 	while (timeout > 0 && index < length) {
 		while (sim_serial.available() && index < length) {
 			uint8_t reply = sim_serial.read();
@@ -320,8 +333,6 @@ enum comm_status_code comm_send_report(uint8_t *buffer) {
 	}
 	db("flush");
 	flush_input();
-	// get_reply(str, OK_REPLY, 500);
-
 
 	get_reply_P(PSTR("AT+HTTPTERM"), PSTR(OK_REPLY), 500);  // No need for error handling
 	//get_reply("AT+SAPBR=0,1", OK_REPLY, 500);  // We don't really have to, happens on shutdown 

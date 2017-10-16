@@ -2,7 +2,7 @@
 #include <SPI.h>
 
 #define VERSION    "1.0"
-#define DISTR_DATE "2017-09-14"
+#define DISTR_DATE "2017-09-22"
 
 
 #define DB_MODULE "Communication Module"
@@ -56,19 +56,21 @@ void setup()
 	reporting_setup();
 
 	db("start testing");
-	uint8_t code = 0; // do_tests();
+	uint8_t code = do_tests();
 
 	while (code != COMMENCE_REPORTING)
 	{
 		db("tests failed");
-		delay(20000);
+		for (int i = 0; i < 12; i++) {
+			delay(10000); // wait 2 minutes
+		}
 		db("retest");
 		code = do_tests();
 	}
 	db("tests finished");
 	
 	// // // // TEST ZONE
-//	for (int i = 0; i < 120; i++) {
+//	for (int i = 0; i < 10; i++) {
 //		db_print("i: ");
 //		db_println(i);
 //		sampling_task();
@@ -105,23 +107,24 @@ uint8_t do_tests(void)
 {
 	uint8_t buffer[50];
 	uint8_t code = sampling_test(buffer);
-#ifdef _DEBUG
-	Serial.print("sampling test result: ");
+
+	db_print("sampling test result: ");
 	for (int i = 0; i < 33; i++) {
-		Serial.print(" ");
-		Serial.print(buffer[i], HEX);
+		db_print(" ");
+		db_print(buffer[i]); // , HEX);
 	}
-	Serial.println("");
-	Serial.println("Storage test");
-#endif
+	db_println("");
+	db_println("Storage test");
+
 	code = stor_test();
 	buffer[33] = code;
-#ifdef _DEBUG
-	if (code == 'O')
+
+	if (code == 'O') {
 		db("stor test success");
-	else
+	}
+	else {
 		db("stor test failed");
-#endif
+	}
 	buffer[34] = 0;
 
 	code = reporting_test(buffer, 35);

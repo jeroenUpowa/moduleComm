@@ -147,8 +147,12 @@ uint8_t sched_add_task(void (*task)(void), int32_t delay, int32_t looptime) {
 	interrupts(); // End of atomic
 
 	if (i == SCHED_MAX_TASKS) {  // Max tasks limit reached
+		db("max tasks reached");
 		return -1;
 	}
+	db_print("task nb: ");
+	db_print(i);
+	db_println();
 	return i; // Return task index
 }
 
@@ -159,8 +163,15 @@ void sched_mainloop(void) {
 		uint8_t i;
 		for (i = 0; i < SCHED_MAX_TASKS; i++) { // For every (valid) task
 			if (task_list[i].task != NULL && task_list[i].delay <= 0) {  // If it can be run
-
+				db("Running task nb: ");
+				db_print("                 ");
+				db_print(i);
+				db_println();
 				task_list[i].task();  // Run task
+				db("End task nb:");
+				db_print("                 ");
+				db_print(i);
+				db_println();
 
 				noInterrupts(); // Atomic access to the task delay
 				if (task_list[i].looptime > 0) { // Cyclic
