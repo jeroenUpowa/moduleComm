@@ -176,6 +176,8 @@ inline uint8_t get_data_from_box(uint8_t *buffer) {
 	// (Re)Configure serial interface to the box
 	Serial1.begin(38400);
 
+	//digitalWrite(LED_BUILTIN, HIGH);
+
 	// run all sampling commands
 	uint8_t tries = 0;
 	for (int i = 0; i < 10; i++) {
@@ -189,19 +191,18 @@ inline uint8_t get_data_from_box(uint8_t *buffer) {
 		}
 
 		buffer += msg_commands[i]->datalen;
+		//delay(1000);
 	}
 	uint8_t result = 0;
 	if (tries == MAX_TRIES) {
 		db("excessive retries - return 0 sample");
-		for (int j = 0; j < SAMPLE_SIZE; j++) {
-			buffer[j] = 0;
-		}
 		result = -1;
 	}
 	else {
 		db("sampling successful");
 	}
 	Serial1.end();
+	//digitalWrite(LED_BUILTIN, LOW);
 	return result;
 }
 
@@ -210,6 +211,7 @@ uint8_t get_paygState_from_box(uint8_t *buffer) {
 
 	// (Re)Configure serial interface to the box
 	Serial1.begin(38400);
+	//digitalWrite(LED_BUILTIN, HIGH);
 
 	// run all paygstate commands
 	uint8_t tries = 0;
@@ -223,19 +225,18 @@ uint8_t get_paygState_from_box(uint8_t *buffer) {
 		}
 
 		buffer += paygState_commands[i]->datalen;
+		//delay(1000);
 	} 
 	uint8_t result = 0;
 	if (tries == MAX_TRIES) {
 		db("excessive retries - return 0 payg state");
-		for (int j = 0; j < PAYG_SIZE; j++) {
-			buffer[j] = 0;
-		}
 		result = -1;
 	}
 	else {
 		db("paygstate successful");
 	}
 	Serial1.end();
+	//digitalWrite(LED_BUILTIN, LOW);
 	return result;
 }
 
@@ -248,14 +249,12 @@ uint8_t get_opid_from_box(uint8_t *buffer) {
 	uint8_t tries = 0;
 	while (send_command(&cmd_OPID, buffer) && tries < MAX_TRIES) {
 		tries++;
+		//delay(1000);
 	}
 
 	uint8_t result = 0;
 	if (tries == MAX_TRIES) { // We didn't make it
 		db("excessive retries - return 0 opid");
-		for (int j = 0; j < OPID_SIZE; j++) {
-			buffer[j] = '0';
-		}
 		result = -1;
 	}
 	else {
@@ -353,6 +352,11 @@ void sampling_task(void) {
 	// Get sample data
 	uint8_t buff[SAMPLE_SIZE];
 	uint8_t code = get_data_from_box(buff);
+	if (code != 0) {
+		for (int j = 0; j < SAMPLE_SIZE; j++) {
+			buff[j] = 0;
+		}
+	}
 
 	// Store this sample to the external eeprom
 	db("writting sample to storage");
@@ -368,14 +372,28 @@ uint8_t sampling_test(uint8_t *buffer)
 {
 	uint8_t id[14];
 	uint8_t code = get_opid_from_box(id);
+	if (code != 0) {
+		for (int j = 0; j < OPID_SIZE; j++) {
+			id[j] = '0';
+		}
+	}
+
 	for (int i = 0; i < 14; i++) {
 		buffer[i] = id[i];
 	}
+
 	uint8_t sample[SAMPLE_SIZE];
 	code = code + get_data_from_box(sample);
+	if (code != 0) {
+		for (int j = 0; j < SAMPLE_SIZE; j++) {
+			sample[j] = 0;
+		}
+	}
+
 	for (int i = 0; i < SAMPLE_SIZE; i++) {
 		buffer[i + 14] = sample[i];
 	}
+
 	return code;
 }
 

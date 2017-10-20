@@ -1,8 +1,8 @@
 #include <lmic.h>
 #include <SPI.h>
 
-#define VERSION    "1.0"
-#define DISTR_DATE "2017-09-22"
+#define VERSION    "1.1"
+#define DISTR_DATE "2017-10-20"
 
 
 #define DB_MODULE "Communication Module"

@@ -30,6 +30,12 @@ void reschedule(void) {
 char * getIdBox(void) {
 	char buff[15] = "";
 	uint8_t code = get_opid_from_box((uint8_t *) buff);
+	if (code != 0) {
+		for (int j = 0; j < OPID_SIZE; j++) {
+			buff[j] = '0';
+		}
+		buff[14] = 0;
+	}
 	return buff;
 }
 
@@ -37,6 +43,11 @@ char * getPaygstate(void) {
 	char buff[31] = "";
 	uint8_t temp[15];
 	uint8_t code = get_paygState_from_box(temp);
+	if (code != 0) {
+		for (int j = 0; j < 15; j++) {
+			temp[j] = 0;
+		}
+	}
 
 	for (int i=0; i < sizeof(temp); ++i) {
 		char hex[3];

@@ -19,14 +19,14 @@
 
 SoftwareSerial sim_serial = SoftwareSerial(SIM_TX, SIM_RX);
 
-#define	SIM_APN "Nextm2m"
-//#define SIM_APN "iot.aer.net"
+//#define	SIM_APN "Nextm2m"
+#define SIM_APN "iot.aer.net"
 
 #define SIM_USER ""
 #define SIM_PWD ""
 
 //#define BOXIDSTRING "testbox"
-#define MODIDSTRING "00000018"
+#define MODIDSTRING "00000036"
 
 // NOTE : DO NOT INCLUDE HTTP:// OR IT WILL FAIL SILENTLY
 //#define POST_URL "putsreq.com/WZlJISLFfouvdVe3G3pu"

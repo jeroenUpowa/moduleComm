@@ -25,9 +25,9 @@
 #define MEMORY_SIZE   65536   // 64 kB
 
 // variables
-uint16_t adr_ecr = 0;
-uint16_t adr_lir = 0;
-uint16_t adr_lir_committed = 0;
+uint16_t adr_ecr = MEMORY_SIZE - 3*19 - 1;
+uint16_t adr_lir = MEMORY_SIZE - 3*19 - 1;
+uint16_t adr_lir_committed = MEMORY_SIZE - 3*19 - 1;
 
 // Prototypes
 uint8_t wait_memory(uint16_t timeout);
