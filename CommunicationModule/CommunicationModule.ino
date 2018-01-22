@@ -25,10 +25,8 @@
 #endif
 
 #include "communication.h"
-
 #include "task_scheduler.h"
 #include "storage_manager.h"
-
 #include "sampling_task.h"
 #include "reporting_task.h"
 
@@ -56,7 +54,7 @@ void setup()
 	reporting_setup();
 
 	db("start testing");
-	uint8_t code = do_tests();
+	uint8_t code = COMMENCE_REPORTING; //  do_tests();
 
 	while (code != COMMENCE_REPORTING)
 	{
@@ -100,7 +98,7 @@ void setup()
 
 void loop()
 {
-
+	
 }
 
 uint8_t do_tests(void)

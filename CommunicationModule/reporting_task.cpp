@@ -11,6 +11,7 @@
 #include "storage_manager.h"
 #include "communication.h"
 
+
 uint8_t connection_retries = 0;
 
 void reporting_setup(void){
@@ -78,21 +79,26 @@ void reporting_task(void){
 	while (stor_start() && tries < STOR_FUN_MAX_RETRIES) tries++;
 	if (tries == STOR_FUN_MAX_RETRIES) {
 		db("Failed to start memory");
+		stor_abort_comp();
 		stor_abort();
 		memfailed = true;
 	}
-
+	
+	
 	// Query available data
 	db("querrying data");
 	uint16_t available = 0;
 	if (memfailed)
 		available = SAMPLE_SIZE;
 	else
-		available = stor_available();
+		available = stor_available_comp();
+		db("available = ");
+		Serial.println(available);
 
 	if (available == 0) { // If not enough samples available, abort
 		db("not enough samples, abort");
 		stor_abort();
+		stor_abort_comp(); 
 		memfailed = true;
 		available = SAMPLE_SIZE;
 	}
@@ -141,6 +147,7 @@ void reporting_task(void){
 			//comm_abort(); RETRY_LATER shuts down the module already
 			if(!memfailed)
 				stor_abort();
+				stor_abort_comp();
 			return;
 		}
 		
@@ -153,17 +160,18 @@ void reporting_task(void){
 		comm_abort();
 		if(!memfailed)
 			stor_abort();
+			stor_abort_comp();
 		return;
 	}
 	// Else :
 	db("module connected");
 
 	// Fill in the samples
-	uint8_t buffer[FETCH_BUFFER_MAX_SIZE];
+	uint8_t buffer[FETCH_BUFFER_MAX_SIZE/2];
 	while (available != 0) {
 	//	Fetch a reasonable amount of samples
 		db("reading samples from memory");
-		uint16_t fetchlen = FETCH_BUFFER_MAX_SIZE;
+		uint16_t fetchlen = FETCH_BUFFER_MAX_SIZE/2;
 		if (fetchlen > available) {
 			fetchlen = available;
 		}
@@ -175,19 +183,23 @@ void reporting_task(void){
 		else {
 			uint16_t readlen;
 			tries = 0;
-			while ((readlen = stor_read(buffer, fetchlen)) && readlen != fetchlen && tries < STOR_FUN_MAX_RETRIES) tries++;
+			while ((readlen = stor_read_comp(buffer, fetchlen)) && readlen != fetchlen && tries < STOR_FUN_MAX_RETRIES) tries++;
 			if (tries == STOR_FUN_MAX_RETRIES) {
 				db("Failed to read memory");
 				reschedule();
 				comm_abort();
 				stor_abort();
+				stor_abort_comp();
 				return;
 			}
 		}
 		available -= fetchlen;
 
+
+	
+
 	//	Fill in Comm report
-		comm_fill_report(buffer, fetchlen);
+		comm_fill_report(buffer, fetchlen); 
 	}
 
 	// Dispatch report
@@ -206,6 +218,7 @@ void reporting_task(void){
 			//comm_abort(); RETRY_LATER shuts down the module already
 			if(!memfailed)
 				stor_abort();
+				stor_abort_comp();
 			return;
 		}
 		// If other errors: Retry
@@ -223,6 +236,7 @@ void reporting_task(void){
 		comm_abort();
 		if(!memfailed)
 			stor_abort();
+			stor_abort_comp();
 		return;
 	}
 	// Else : success
@@ -234,6 +248,7 @@ void reporting_task(void){
 	else {
 		db("confirming read data");
 		stor_end();
+		stor_end_comp();
 	}
 	// Communication closed on successful send_report :)
 

@@ -26,14 +26,14 @@ SoftwareSerial sim_serial = SoftwareSerial(SIM_TX, SIM_RX);
 #define SIM_PWD ""
 
 //#define BOXIDSTRING "testbox"
-#define MODIDSTRING "00000036"
+#define MODIDSTRING "00000011"
 
 // NOTE : DO NOT INCLUDE HTTP:// OR IT WILL FAIL SILENTLY
 //#define POST_URL "putsreq.com/WZlJISLFfouvdVe3G3pu"
-//#define POST_URL "posttestserver.com/post.php?dir=jerUpPost"
+//#define POST_URL "posttestserver.com/post.php?dir=Mailys\""
 //#define POST_URL "90.112.154.97/submit.php?id=" BOXIDSTRING
-#define POST_URL "46.101.211.161:8080/uwipModCom-war/PostToDb?ID=" MODIDSTRING "&boxID="
-
+//#define POST_URL "46.101.211.161:8080/uwipModCom-war/PostToDb?ID=" MODIDSTRING "&boxID="
+#define POST_URL "46.101.211.161:8080/uwipModCom-war/PostToDbDecompression?ID=" MODIDSTRING "&boxID="
 //#define POST_URL "46.101.211.161:8080/?ID=" MODIDSTRING "&boxID="
 //#define POST_URL "qsdgqsdfgsd.com/?ID=" MODIDSTRING "&boxID="
 

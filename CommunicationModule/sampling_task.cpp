@@ -345,6 +345,7 @@ void sampling_task(void) {
 	while (stor_start() && tries < STOR_FUN_MAX_RETRIES) tries++;
 	if (tries == STOR_FUN_MAX_RETRIES) {
 		db("Failed to start memory");
+		stor_abort_comp();
 		stor_abort();
 		return;
 	}
@@ -361,7 +362,9 @@ void sampling_task(void) {
 	// Store this sample to the external eeprom
 	db("writting sample to storage");
 	stor_write(buff, SAMPLE_SIZE);
+	compression();
 	stor_end();
+	
 
 	// Go back to sleep
 	db("end");
