@@ -345,7 +345,6 @@ void sampling_task(void) {
 	while (stor_start() && tries < STOR_FUN_MAX_RETRIES) tries++;
 	if (tries == STOR_FUN_MAX_RETRIES) {
 		db("Failed to start memory");
-		stor_abort_comp();
 		stor_abort();
 		return;
 	}

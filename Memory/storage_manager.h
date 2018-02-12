@@ -77,10 +77,10 @@ uint16_t stor_available_comp(void);
 void compression();
 uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie);
 void recopiage(uint8_t* lit, uint16_t* adresse_entree, uint16_t* adresse_entree_debut, uint16_t* adresse_entree_fin, uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint16_t* ilen, uint16_t* olen);
-int Literal_run(uint16_t* adresse_entree, uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint8_t* lit, uint16_t* olen);
+void Literal_run (uint16_t* adresse_entree, uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint8_t* lit, uint16_t* olen);
 void Encodage_compression(unsigned int* len, int32_t* off, uint16_t* adresse_entree, uint16_t* adresse_sortie, uint8_t* lit);
-int Fin_Literal_run(uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint8_t* lit, uint16_t* olen);
-int Recopiage_final(uint16_t* adresse_entree, uint16_t* adresse_entree_debut, uint16_t* adresse_entree_fin, uint16_t* ilen, uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint16_t* olen, uint8_t* lit);
+void Fin_Literal_run(uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint8_t* lit, uint16_t* olen);
+void Recopiage_final(uint16_t* adresse_entree, uint16_t* adresse_entree_debut, uint16_t* adresse_entree_fin, uint16_t* ilen, uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint16_t* olen, uint8_t* lit);
 void Continuite(uint32_t* resultat, unsigned int* len, int32_t* off, uint16_t* adresse_entree, uint16_t* adresse_entree_1, uint16_t* adresse_entree_2, int32_t* ref, int32_t* ref_1, int32_t* ref_2, unsigned int* maxlen, uint16_t* adresse_sortie, uint16_t* adresse_sortie_fin, uint8_t* lit);
 
 

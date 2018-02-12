@@ -11,23 +11,22 @@
 #define fx_expect_true(expr)   (expr)
 typedef unsigned char u8;
 
-/* These cannot be changed, as they are related to the compressed format. */
-#define LZFX_MAX_LIT        (1 <<  5)
-#define LZFX_MAX_OFF        (1 << 13)
-#define LZFX_MAX_REF        ((1 << 8) + (1 << 3))
-#define Dernier_echantillon   240
+/* Ces parametres ne peuvent pas être modifies car ils sont propres au format compresse */
+#define LZFX_MAX_LIT        (1 <<  5)  /* Nombre maximal d'octets recopiés littéralement */
+#define LZFX_MAX_OFF        (1 << 13)  /* Distance maximale entre 2 motifs redondants */
+#define LZFX_MAX_REF        ((1 << 8) + (1 << 3))  /* Taille maximale d'un motif redondant */
 
-/* Predefined errors. */
-#define LZFX_ESIZE      -1      /* Output buffer too small */
-#define LZFX_EARGS      -3      /* Arguments invalid (NULL) */
+/* Erreurs predefinies */
+#define LZFX_ESIZE      -1      /* Buffer de sortie trop petit */
+#define LZFX_EARGS      -3      /* Arguments invalides (NULL) */
 
-// pins
+/* pins */
 #define DATAOUT MOSI//MOSI
 #define DATAIN  MISO//MISO
 #define SPICLOCK  SCK//sck
 #define SLAVESELECT A5//ss
 
-// opcodes
+/* opcodes */
 #define WREN  0x06
 #define WRDI  0x04
 #define RDSR  0x05
@@ -36,27 +35,27 @@ typedef unsigned char u8;
 #define WRIT  0x02
 #define CE    0xC7
 
-// constants
+/* constants */
 #define WIP_MASK      0x01
 #define PAGE_SIZE     128
-#define MEMORY_SIZE   60000   // precedemment 65536 soit 64 kB
-#define MEMORY_COMPRESSED_MAX 65536
+#define MEMORY_SIZE   60000   /* Dernier octet accordé à la partition de mémoire dédiée aux données brutes de la batterie */
+#define MEMORY_COMPRESSED_MAX 65535   /* Dernier octet accordé à la partition de la mémoire dédiée aux données compressées */
+#define Dernier_echantillon 240   /* 1 échantillon par minutes pendant 4 heures */
 
-// variables
-uint16_t adr_ecr = MEMORY_SIZE - 3*19 - 1;  // adresse à laquelle sont écrites les données de la batterie
-uint16_t adr_lir = MEMORY_SIZE - 3*19 - 1;  // adresse où sont lues les données de la batterie
-uint16_t adr_lir_committed = MEMORY_SIZE - 3*19 - 1; // adresse repère de lecture des données batterie
-uint32_t adr_lir_deb = MEMORY_SIZE - 3 * 19 - 1; // adresse du premier octet d'un paquet de 4h dans les donnees batterie
-uint32_t adr_lir_comp = MEMORY_SIZE+1; // adresse où sont lues les données compressées
-uint16_t adr_lir_committed_comp = MEMORY_SIZE+1; // adresse repère de lecture des données compressées
-uint32_t adr_ecr_comp_vrai = MEMORY_SIZE+1; // adresse à laquelle sont écrites les données compressées
+/* variables */
+uint16_t adr_ecr = MEMORY_SIZE - 3*19 - 1;    /* adresse à laquelle sont écrites les données de la batterie */
+uint16_t adr_lir = MEMORY_SIZE - 3*19 - 1;    /* adresse où sont lues les données de la batterie */
+uint16_t adr_lir_committed = MEMORY_SIZE - 3*19 - 1;   /* adresse repère de lecture des données de la batterie */
+uint32_t adr_lir_deb = MEMORY_SIZE - 3 * 19 - 1;   /* adresse du premier octet d'un paquet de 4h dans les donnees de la batterie */
+uint32_t adr_lir_comp = MEMORY_COMPRESSED_MAX - 3 * 19 - 1;   /* adresse où sont lues les données compressées */
+uint16_t adr_lir_committed_comp = MEMORY_COMPRESSED_MAX - 3 * 19 - 1;   /* adresse repère de lecture des données compressées */
+uint32_t adr_ecr_comp = MEMORY_COMPRESSED_MAX - 3 * 19 - 1;   /* adresse à laquelle sont écrites les données compressées */
+uint32_t resultat;   /* variable nulle lorsque la compression s'est bien passée ou indicatrice d'erreur */
 uint16_t compteur_echantillon = 0;
-uint32_t resultat; // variable nulle lorsque la compression s'est bien passée
 int longueur_initiale_totale = 0;
 int longueur_compressee_totale = 0;
-int error = 0;
 
-// Prototypes
+/* Prototypes */
 uint8_t wait_memory(uint16_t timeout);
 uint8_t memory_is_busy(void);
 uint8_t write_eeprom(uint8_t *data, uint16_t address, uint16_t len);
@@ -80,7 +79,7 @@ uint8_t stor_start(void) {
 
 void stor_abort(void) {
 	db("Abort");
-	adr_lir = adr_lir_committed;
+	//adr_lir = adr_lir_committed;
 	wait_memory(1000);
 	SPI.end();
 }
@@ -88,7 +87,6 @@ void stor_abort(void) {
 void stor_abort_comp(void) {
 	db("Abort comp");
 	adr_lir_comp = adr_lir_committed_comp;
-	adr_ecr_comp_vrai = adr_lir_comp;
 }
 
 void stor_end(void) {
@@ -101,6 +99,10 @@ void stor_end(void) {
 void stor_end_comp(void) {
 	db("End comp");
 	adr_lir_committed_comp = adr_lir_comp;
+	compteur_echantillon = 0;
+	longueur_initiale_totale = 0;
+	longueur_compressee_totale = 0;
+	adr_lir_deb = adr_lir;
 }
 
 void stor_erase_eeprom()
@@ -198,14 +200,14 @@ uint8_t stor_write(uint8_t *data, uint16_t len)
 		uint16_t ecrit_bas = MEMORY_SIZE - adr_ecr+1 ;
 		if (write_eeprom(data, adr_ecr, ecrit_bas))
 		{
-			db("Ecrire erreur pour le bas de memoire");
+			db("Probleme d'ecriture au bas de la memoire");
 			return -1;
 		}
 
 		adr_ecr = 0;
 		if (write_eeprom((data + ecrit_bas), adr_ecr, (len - ecrit_bas)))
 		{
-			db("Ecrire erreur pour le haut de memoire");
+			db("Probleme d'ecriture en haut de la memoire");
 			return -1;
 		}
 		adr_ecr += (len - ecrit_bas);
@@ -219,7 +221,6 @@ uint8_t stor_write(uint8_t *data, uint16_t len)
 		}
 		adr_ecr += len;
 	}
-	Serial.println(adr_ecr);
 	return 0;
 }
 
@@ -236,17 +237,17 @@ uint16_t stor_read(uint8_t *buffer, uint16_t maxlen)
 	uint16_t len = min(stor_available(), maxlen);
 	if (adr_lir + len > MEMORY_SIZE)
 	{
-		uint16_t lit_bas = MEMORY_SIZE - adr_lir;
+		uint16_t lit_bas = MEMORY_SIZE + 1 - adr_lir;
 		if (read_eeprom(buffer, adr_lir, lit_bas))
 		{
-			db("Lire erreur pour le bas de memoire");
+			db("Erreur de lecture au bas de la memoire");
 			return 0;
 		}
 
 		adr_lir = 0;
 		if (read_eeprom((buffer + lit_bas), adr_lir, (len - lit_bas)))
 		{
-			db("Ecrire erreur pour le haut de memoire");
+			db("Erreur de lecture en haut de la memoire");
 			return 0;
 		}
 		adr_lir += (len - lit_bas);
@@ -272,26 +273,24 @@ uint16_t stor_read(uint8_t *buffer, uint16_t maxlen)
 */
 uint16_t stor_read_comp(uint8_t *buffer, uint16_t maxlen)
 {
-	db("Lire les donnees");
+	db("Lecture des donnees compressees");
 	uint16_t len = min(stor_available_comp(), maxlen);
 	
 	if (adr_lir_comp+len > MEMORY_COMPRESSED_MAX)
 	{
-		uint16_t lit_bas = MEMORY_COMPRESSED_MAX - adr_lir_comp;
+		uint16_t lit_bas = MEMORY_COMPRESSED_MAX + 1 - adr_lir_comp;
 		if (read_eeprom(buffer, adr_lir_comp, lit_bas))
 		{
-			db("Lire erreur pour le bas de memoire");
+			db("Erreur de lecture au bas de la memoire");
 			return 0;
 		}
 		adr_lir_comp = MEMORY_SIZE + 1;
-		
 		if (read_eeprom((buffer + lit_bas), adr_lir_comp, (len - lit_bas)))
 		{
-			db("Lire erreur pour le haut de memoire");
+			db("Erreur de lecture en haut de la memoire");
 			return 0;
 		}
-		adr_lir_comp += (len - lit_bas);
-		
+		adr_lir_comp += (len - lit_bas);		
 	}
 	else
 	{
@@ -315,20 +314,20 @@ uint16_t stor_available(void)
 	}
 	else
 	{
-		return adr_ecr + (MEMORY_SIZE - adr_lir) +1;
+		return adr_ecr + (MEMORY_SIZE + 1 - adr_lir) ;
 	}
 }
 
 uint16_t stor_available_comp(void)
 {
-	db("Query available");
-	if (adr_ecr_comp_vrai >= adr_lir_comp)
+	db("Donnees compressees disponibles");
+	if (adr_ecr_comp >= adr_lir_comp)
 	{
-		return adr_ecr_comp_vrai - adr_lir_comp;
+		return adr_ecr_comp - adr_lir_comp;
 	}
 	else
 	{
-		return ((adr_ecr_comp_vrai-MEMORY_SIZE) + (MEMORY_COMPRESSED_MAX - adr_lir_comp));
+		return ((adr_ecr_comp - MEMORY_SIZE - 1 ) + (MEMORY_COMPRESSED_MAX + 1 - adr_lir_comp));
 	}
 }
 
@@ -445,59 +444,58 @@ void write_1_byte (uint8_t donnee, uint16_t adresse){
 
 
 
-//Fonction pour activer la compression de TOUTES les données stockées en mémoire
+/* Fonctions de compression de toutes les données stockées en mémoire */
 
 void recopiage(uint8_t* lit, uint16_t* adresse_entree, uint16_t* adresse_entree_debut, uint16_t* adresse_entree_fin, uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint16_t* ilen, uint16_t* olen) {
 
+	db("Ecriture des 19 premiers octets");
 	uint16_t adresse_sortie_lit_1;
+	*lit = 0; 
+	*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 
-	*lit = 0; *adresse_sortie = *adresse_sortie + 1;
-	if (*adresse_sortie > MEMORY_COMPRESSED_MAX) {
-		*adresse_sortie = MEMORY_SIZE + 1;
-	}
 
 	while (*adresse_entree >= *adresse_entree_debut ? (*adresse_entree < *adresse_entree_debut + *ilen) : (*adresse_entree < *adresse_entree_fin)) {
 
-		db("Ecriture des 19 premiers octets");
+		
 		*lit = *lit + 1;
 		write_1_byte(read_1_byte(*adresse_entree > MEMORY_SIZE ? 0 : *adresse_entree), *adresse_sortie > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie);
-		*adresse_entree = *adresse_entree + 1;
-		*adresse_sortie = *adresse_sortie + 1;
+		*adresse_entree == MEMORY_SIZE ? *adresse_entree = 0 : *adresse_entree = *adresse_entree + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
+
 
 		if (fx_expect_false(*lit == LZFX_MAX_LIT)) {
-			if (*adresse_sortie - MEMORY_SIZE < *lit + 1) {
-				adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX - (*lit + 1 - *adresse_sortie);
+			if (*adresse_sortie - (MEMORY_SIZE + 1) < *lit + 1) {
+				adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX + 1 - (*lit + 1 - (*adresse_sortie - (MEMORY_SIZE + 1)));
 			}
 			else {
 				adresse_sortie_lit_1 = *adresse_sortie - *lit - 1;
 			}
 			write_1_byte(*lit - 1, adresse_sortie_lit_1); /* Terminate literal run */
-			*lit = 0; *adresse_sortie = *adresse_sortie + 1;
-			if (*adresse_sortie > MEMORY_COMPRESSED_MAX) {
-				*adresse_sortie = MEMORY_SIZE + 1;
-			}
+			*lit = 0; 
+			*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1; 
+			
 		}
 
 	}
 
 }
 
-int Literal_run(uint16_t *adresse_entree, uint16_t *adresse_sortie, uint16_t *adresse_sortie_debut, uint16_t *adresse_sortie_fin, uint8_t* lit, uint16_t* olen) {
+void Literal_run(uint16_t *adresse_entree, uint16_t *adresse_sortie, uint16_t *adresse_sortie_debut, uint16_t *adresse_sortie_fin, uint8_t* lit, uint16_t* olen) {
 
+	db("Recopiage litteral");
 	uint16_t adresse_sortie_lit_1;
 
-	if (fx_expect_false(*adresse_sortie >= *adresse_sortie_fin) | fx_expect_false(*olen - (*adresse_sortie - *adresse_sortie_debut) <= 0)) return LZFX_ESIZE;
 	if (*lit == 0) {
-		*adresse_sortie = *adresse_sortie + 1 > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 	}
 	*lit = *lit + 1;
 	write_1_byte(read_1_byte(*adresse_entree > MEMORY_SIZE ? 0 : *adresse_entree), *adresse_sortie > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie);
-	*adresse_entree = *adresse_entree + 1 > MEMORY_SIZE ? *adresse_entree = 0 : *adresse_entree + 1;
-	*adresse_sortie = *adresse_sortie + 1 > MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie + 1;
-
+	*adresse_entree = *adresse_entree + 1 > MEMORY_SIZE ?  0 : *adresse_entree + 1;
+	*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
+	
 	if (fx_expect_false(*lit == LZFX_MAX_LIT)) {
-		if (*adresse_sortie - MEMORY_SIZE < *lit + 1) {
-			adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX - (*lit + 1 - *adresse_sortie);
+		if (*adresse_sortie - (MEMORY_SIZE + 1) < *lit + 1) {
+			adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX + 1 - (*lit + 1 - (*adresse_sortie - (MEMORY_SIZE + 1)));
 			write_1_byte(*lit - 1, adresse_sortie_lit_1); /* Terminate literal run */
 		}
 		else {
@@ -505,45 +503,35 @@ int Literal_run(uint16_t *adresse_entree, uint16_t *adresse_sortie, uint16_t *ad
 			write_1_byte(*lit - 1, adresse_sortie_lit_1); /* Terminate literal run */
 		}
 
-		*lit = 0; *adresse_sortie = *adresse_sortie + 1; /* start run */
-		if (*adresse_sortie > MEMORY_COMPRESSED_MAX) {
-			*adresse_sortie = MEMORY_SIZE + 1;
-		}
+		*lit = 0; 
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
+		
 	}
 
-	return 0;
 }
 
 void Encodage_compression(unsigned int* len, int32_t* off, uint16_t* adresse_entree, uint16_t* adresse_sortie, uint8_t* lit) {
 
+	db("Encodage de la compression");
 	/* Format 1: [LLLooooo oooooooo] */
 	if (*len < 7) {
 		write_1_byte((*off >> 8) + (*len << 5), *adresse_sortie > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie);
-		*adresse_sortie = *adresse_sortie + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 		write_1_byte(*off, *adresse_sortie > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie);
-		*adresse_sortie = *adresse_sortie + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 	}
 
 	/* Format 2: [111ooooo LLLLLLLL oooooooo] */
 	else {
 		write_1_byte((*off >> 8) + (7 << 5), *adresse_sortie > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie);
-		*adresse_sortie = *adresse_sortie + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 		write_1_byte(*len - 7, *adresse_sortie > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie);
-		*adresse_sortie = *adresse_sortie + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 		write_1_byte(*off, *adresse_sortie > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie);
-		*adresse_sortie = *adresse_sortie + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 	}
-
-	/* Affichage de l'encodage de la redondance */
-	Serial.println(read_1_byte(*adresse_sortie - 3));
-	Serial.println(read_1_byte(*adresse_sortie - 2));
-	Serial.println(read_1_byte(*adresse_sortie - 1));
 
 	*lit = 0;
-	if (*adresse_sortie > MEMORY_COMPRESSED_MAX) {
-		*adresse_sortie = MEMORY_SIZE + 1;
-	}
-
 	*adresse_entree = *adresse_entree + *len + 2;  /* ip = initial ip + #octets */
 	if (*adresse_entree > MEMORY_SIZE) {
 		unsigned int haut = *adresse_entree - MEMORY_SIZE - 1;
@@ -552,100 +540,76 @@ void Encodage_compression(unsigned int* len, int32_t* off, uint16_t* adresse_ent
 
 }
 
-int Fin_Literal_run(uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint8_t* lit, uint16_t* olen) {
+void Fin_Literal_run(uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint8_t* lit, uint16_t* olen) {
 	
+	db("Fin du recopiage litteral");
 	if (*lit == 0) {
-		*adresse_sortie = *adresse_sortie + 1 > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 	}
-
 	uint16_t adresse_sortie_lit_1;
 
-	if (fx_expect_false(*adresse_sortie - !(*lit) + 3 + 1 >= *adresse_sortie_fin) | fx_expect_false(*olen - (*adresse_sortie_debut - *adresse_sortie) < 0 - !(*lit) + 3 + 1)) {
-		return LZFX_ESIZE;
-	}
-
-	if (*adresse_sortie - MEMORY_SIZE < !(*lit)) {
-		adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX - (*lit + 1 - *adresse_sortie);
-		*adresse_sortie = MEMORY_COMPRESSED_MAX - (!(*lit) - *adresse_sortie);/* Undo run if length is zero */
-	}
-	else if (*adresse_sortie - MEMORY_SIZE < *lit + 1) {
-		adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX - (*lit + 1 - *adresse_sortie);
+	if ((*lit+1) > (*adresse_sortie - (MEMORY_SIZE + 1))) {
+		adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX + 1 - (*lit + 1 - (*adresse_sortie - (MEMORY_SIZE + 1)));  
 		*adresse_sortie -= !(*lit);               /* Undo run if length is zero */
 	}
 	else {
 		adresse_sortie_lit_1 = *adresse_sortie - *lit - 1;
 		*adresse_sortie -= !(*lit);               /* Undo run if length is zero */
+		*adresse_sortie == MEMORY_SIZE ? *adresse_sortie = MEMORY_COMPRESSED_MAX : *adresse_sortie = *adresse_sortie;
 	}
-
+	
 	write_1_byte(*lit - 1, adresse_sortie_lit_1); /* Terminate literal run */
-	return 0;
 
 }
 
-int Recopiage_final(uint16_t* adresse_entree, uint16_t* adresse_entree_debut, uint16_t* adresse_entree_fin, uint16_t* ilen, uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint16_t* olen, uint8_t* lit) {
+void Recopiage_final(uint16_t* adresse_entree, uint16_t* adresse_entree_debut, uint16_t* adresse_entree_fin, uint16_t* ilen, uint16_t* adresse_sortie, uint16_t* adresse_sortie_debut, uint16_t* adresse_sortie_fin, uint16_t* olen, uint8_t* lit) {
 
-	db("Recopiage final");
+	db("Recopiage des 3 derniers octets");
 
 	uint16_t adresse_sortie_lit_1;
-
-	/* Recopiage des 3 derniers octets */
-
-	if ((*adresse_sortie + 3 > *adresse_sortie_fin) | (*olen - *adresse_sortie + *adresse_sortie_debut < 3)) return LZFX_ESIZE;
 
 	while (*adresse_entree_debut < *adresse_entree ? (*ilen - *adresse_entree + *adresse_entree_debut > 0) : (*adresse_entree < *adresse_entree_fin)) {
 
 		if (*lit == 0) {
-			*adresse_sortie = *adresse_sortie + 1 > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie + 1;
+			*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
 		}
 		*lit = *lit + 1;
 		write_1_byte(read_1_byte(*adresse_entree > MEMORY_SIZE ? 0 : *adresse_entree), *adresse_sortie > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : *adresse_sortie);
-		*adresse_entree = *adresse_entree + 1;
-		*adresse_sortie = *adresse_sortie + 1;
-
+		*adresse_entree == MEMORY_SIZE ? *adresse_entree = 0 : *adresse_entree = *adresse_entree + 1;
+		*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
+		
 		if (fx_expect_false(*lit == LZFX_MAX_LIT)) {
-			if (*adresse_sortie - MEMORY_SIZE < *lit + 1) {
-				adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX - (*lit + 1 - *adresse_sortie);
+			if (*adresse_sortie - (MEMORY_SIZE + 1) < *lit + 1) {
+				adresse_sortie_lit_1 = MEMORY_COMPRESSED_MAX + 1 - (*lit + 1 - (*adresse_sortie - (MEMORY_SIZE + 1)));
 			}
 			else {
 				adresse_sortie_lit_1 = *adresse_sortie - *lit - 1;
 			}
 			write_1_byte(*lit - 1, adresse_sortie_lit_1); /* Terminate literal run */
-			*lit = 0; (*adresse_sortie)++;
-			if (*adresse_sortie > MEMORY_COMPRESSED_MAX) {
-				*adresse_sortie = MEMORY_SIZE + 1;
-			}
+			*lit = 0; 
+			*adresse_sortie == MEMORY_COMPRESSED_MAX ? *adresse_sortie = MEMORY_SIZE + 1 : *adresse_sortie = *adresse_sortie + 1;
+
 		}
 	}
-	
-	return 0;
 }
 
 void Continuite(uint32_t* resultat, unsigned int* len, int32_t* off, uint16_t* adresse_entree, uint16_t* adresse_entree_1, uint16_t* adresse_entree_2, int32_t* ref, int32_t* ref_1, int32_t* ref_2, unsigned int* maxlen, uint16_t* adresse_sortie, uint16_t* adresse_sortie_fin, uint8_t* lit) {
 
+	db("Continuite d'un motif de compression d'un echantillon sur l'autre");
 	uint16_t sortie_fin = *adresse_sortie_fin;
 
 	if (*resultat <= 57343) {
-		db("ici ?");
 		*(uint32_t*)len = *resultat >> (uint32_t)13;
 		*(uint32_t*)off = *resultat & (uint32_t)0x1FFF;
 	}
 	else {
-		db("la ?");
 		*(uint32_t*)len = (uint32_t)7 + ((*resultat & (uint32_t)0x00FF00) >> (uint32_t)8);
 		*(uint32_t*)off = ((*resultat & (uint32_t)0x1F0000) >> (uint32_t)8) + (*resultat & (uint32_t)0x0000FF);
 	}
 	*adresse_sortie_fin = sortie_fin;
-	db("len et off precedents : ");
-	Serial.println(*len);
-	Serial.println(*off);
-	Serial.println(*(uint32_t*)off);
-	db("Adresse_entree : ");
-	Serial.println(*adresse_entree);
-
 	*ref = (*adresse_entree - *off - 1 > 0 ? *adresse_entree - *off - 1 : MEMORY_SIZE - *off + *adresse_entree);
-	db("REF : ");
-	Serial.println(*ref);
-	// S'assurer des valeurs des 2 adresses suivantes
+	
+	/* Vérification des valeurs des 2 adresses suivantes */
 	if (*ref + 2 > MEMORY_SIZE) {
 		unsigned int haut = *ref + 2 - MEMORY_SIZE;
 		*ref_2 = haut - 1;
@@ -660,28 +624,27 @@ void Continuite(uint32_t* resultat, unsigned int* len, int32_t* off, uint16_t* a
 		*ref_2 = *ref + 2;
 		*ref_1 = *ref + 1;
 	}
-	//Deduction de MAXLEN selon le numero de l'echantillon
+
+	/* Deduction de MAXLEN selon le numero de l'echantillon */
 	if (compteur_echantillon < Dernier_echantillon) {
 		*maxlen = *len + 18;
 	}
 	else if (compteur_echantillon == Dernier_echantillon) {
 		*maxlen = *len + 16;
 	}
-	db("MAXLEN : ");
-	Serial.println(*maxlen);
-	/*  Start checking at the fourth byte */
+	
+	/* Verification de la longueur du motif en commençant par comparer le 4e octet */
 	while ((*len < *maxlen) && read_1_byte(*ref + *len > MEMORY_SIZE ? *len - (MEMORY_SIZE - *ref + 1) : *ref + *len) == read_1_byte(*adresse_entree + *len > MEMORY_SIZE ? *len - (MEMORY_SIZE - *adresse_entree + 1) : *adresse_entree + *len)) {
 		(*len)++;
 	}
 	*len = *len - 2;
-	db("nouveau len : ");
-	Serial.println(*len);
+	
 	Encodage_compression(len, off, adresse_entree, adresse_sortie, lit);
 
 }
 
 void compression() {
-	db("Bienvenue dans la fonction de compression");
+	db("Compression");
 	compteur_echantillon++;
 	if (compteur_echantillon > Dernier_echantillon) {
 		compteur_echantillon = 1;
@@ -689,18 +652,20 @@ void compression() {
 		longueur_compressee_totale = 0;
 		adr_lir_deb = adr_lir;
 	}
-	db("Numero de l'echantillon");
+#ifdef _DEBUG
+	db("Numero de l'echantillon");	
 	Serial.println(compteur_echantillon);
-	resultat = lzfx_compress(adr_lir, adr_ecr_comp_vrai);
+	resultat = lzfx_compress(adr_lir, adr_ecr_comp);
 	db("ok ? ");
 	Serial.println(resultat);
+#endif
 }
 
 
 uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 	db("Bienvenue dans LZFX");
 
-	/*Déclaration, définitions, initialisations des adresses de début et fin du "buffer" d'entrée */
+	/* Déclaration, définitions, initialisations des adresses de début et fin du "buffer" d'entrée */
 	uint16_t adresse_entree_debut = adr_ecr - 19;
 	uint16_t adresse_entree_1;
 	uint16_t adresse_entree_2;
@@ -708,7 +673,7 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 	uint16_t adresse_entree_fin = adr_ecr; // La fin des donnees correspond à l'octet suivant le dernier lu (le prochain à lire)
 
 	
-	/*Déclaration, définitions, initialisations des adresses de début et fin du "buffer" de sortie */
+	/* Déclaration, définitions, initialisations des adresses de début et fin du "buffer" de sortie */
 	uint16_t adresse_sortie_debut = adresse_sortie;
 	uint16_t adresse_sortie_lit_1;
 	uint16_t olen = ilen + 5;
@@ -724,16 +689,12 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 		adresse_sortie_fin = MEMORY_SIZE + 1 + olen - bas;
 	}
 
-	/*db("Adresse_sortie : debut, fin, taille");
-	Serial.println(adresse_sortie_debut);
-	Serial.println(adresse_sortie_fin);
-	Serial.println(olen);*/
-
-	//Déclaration, définitions, initialisations de variables
+	/* Déclaration, définitions, initialisations de variables */
 	uint8_t lit; int32_t off;
 	int32_t ref_1, ref_2, ref;
 	unsigned int len, maxlen;
 
+	/* Erreurs de parametrage */
 	if (olen == NULL) return LZFX_EARGS;
 	if (adresse_entree == NULL) {
 		if (ilen != 0) return LZFX_EARGS;
@@ -757,28 +718,25 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 
 		/* Lecture des donnees d'entree par 3 octets */
 		while (adresse_entree > adresse_entree_fin ? (ilen - (adresse_entree - adresse_entree_debut) > 2) : (adresse_entree + 2 < adresse_entree_fin)) {   /* The NEXT macro reads 2 bytes ahead */
-			db("Boucle de lecture");
-
+			
 			/* Continuité d'un motif redondant d'un echantillon sur l'autre */
 			if (resultat >= 8193) {
-				db("continuite...");
+				db("Continuite");
 				Continuite(&resultat, &len, &off, &adresse_entree, &adresse_entree_1, &adresse_entree_2, &ref, &ref_1, &ref_2, &maxlen, &adresse_sortie, &adresse_sortie_fin, &lit);
 				resultat = 0;
 				adresse_entree_fin = adr_ecr;
 			}
-
-
+			
 			/* Continuité du recopiage litteral */
 			else if (resultat > 0 && resultat <= 32) {
 				lit = resultat;
 				resultat = 0;
 			}
-
-
-			/* Pas de motif redondant d'un echantillon sur l'autre */
+			
+			/* Absence de motif redondant d'un echantillon sur l'autre */
 			else {
 
-				// S'assurer des valeurs des 2 adresses suivantes
+				/* Verification des valeurs des 2 adresses suivantes */
 				if (adresse_entree + 2 > MEMORY_SIZE) {
 					unsigned int haut = adresse_entree + 2 - MEMORY_SIZE;
 					adresse_entree_2 = haut - 1;
@@ -794,16 +752,9 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 					adresse_entree_1 = adresse_entree + 1;
 				}
 
-				db("Adresse_entree : 0, 1, 2");
-				Serial.println(adresse_entree);
-				Serial.println(adresse_entree_fin);
-				Serial.println(read_1_byte(adresse_entree));
-				Serial.println(read_1_byte(adresse_entree_1));
-				Serial.println(read_1_byte(adresse_entree_2));
-
 				ref = adresse_entree - 1;
 
-				// S'assurer des valeurs des 2 adresses suivantes
+				/* Verification des valeurs des 2 adresses suivantes */
 				if (ref + 2 > MEMORY_SIZE) {
 					unsigned int haut = ref + 2 - MEMORY_SIZE;
 					ref_2 = haut - 1;
@@ -819,13 +770,6 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 					ref_1 = ref + 1;
 				}
 
-				/*db("Ref : 0, 1, 2");
-				Serial.println (ref);
-				Serial.println(read_1_byte(ref));
-				Serial.println(read_1_byte(ref_1));
-				Serial.println(read_1_byte(ref_2));*/
-
-
 				/* Decrementation de ref à la recherche d'un motif redondant */
 				while ((adresse_entree < adr_lir_deb ? (((ref >= 0) && (ref < adresse_entree)) || ((ref > adr_lir_deb + 1) && (ref <= MEMORY_SIZE))) : ((ref > adr_lir_deb + 1) && (ref < adresse_entree)))
 
@@ -839,7 +783,7 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 						ref = MEMORY_SIZE;
 					}
 
-					// S'assurer des valeurs des 2 adresses suivantes
+					// Verification des valeurs des 2 adresses suivantes
 					if (ref + 2 > MEMORY_SIZE) {
 						unsigned int haut = ref + 2 - MEMORY_SIZE;
 						ref_2 = haut - 1;
@@ -855,16 +799,12 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 						ref_1 = ref + 1;
 					}
 
-					/*db("Ref : 0, 1, 2");
-					Serial.println(ref);
-					Serial.println(read_1_byte(ref));
-					Serial.println(read_1_byte(ref_1));
-					Serial.println(read_1_byte(ref_2));*/
 				}
 
 
 				if (compteur_echantillon < Dernier_echantillon) {
-					/* En cas de redondance */
+					
+					/* Redondance */
 					if (((ref < adresse_entree) | (adresse_entree < adr_lir_deb))
 						&& ((off = (adresse_entree - ref - 1) > 0 ? (adresse_entree - ref - 1) : (MEMORY_SIZE - ref + adresse_entree)) < LZFX_MAX_OFF)
 
@@ -877,45 +817,35 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 
 						len = 3;   /* We already know 3 bytes match */
 
-					    /*Définition du maximum d'octets similaires à la suite */
+					    /* Définition de la taille maximale du motif redondant */
 						if (adresse_entree < adresse_entree_fin) {
 							maxlen = adresse_entree_fin - adresse_entree > LZFX_MAX_REF ?
 								LZFX_MAX_REF : adresse_entree_fin - adresse_entree;
 						}
 						else {
-							maxlen = (MEMORY_SIZE - adresse_entree + adresse_entree_fin) > LZFX_MAX_REF ? LZFX_MAX_REF : MEMORY_SIZE - adresse_entree + adresse_entree_fin;
+							maxlen = (MEMORY_SIZE + 1  - adresse_entree + adresse_entree_fin) > LZFX_MAX_REF ? LZFX_MAX_REF : MEMORY_SIZE + 1 - adresse_entree + adresse_entree_fin ;
 						}
-						db("maxlen");
-						Serial.println(maxlen);
-						db("lit");
-						Serial.println(lit);
-						error = Fin_Literal_run(&adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
-						if (error != 0) return error;
+						Fin_Literal_run(&adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
+						
 
-						/*  Start checking at the fourth byte */
+						/* Verification de la longueur du motif en commençant par comparer le 4e octet */
 						while ((len < maxlen) && read_1_byte(ref + len > MEMORY_SIZE ? len - (MEMORY_SIZE - ref + 1) : ref + len) == read_1_byte(adresse_entree + len > MEMORY_SIZE ? len - (MEMORY_SIZE - adresse_entree + 1) : adresse_entree + len)) {
 							len++;
 						}
 
-						db("adresse_sortie");
-						Serial.println(adresse_sortie);
-
 						len -= 2;  /* We encode the length as #octets - 2 */
-						db("len : ");
-						Serial.println(len);
-						db("off : ");
-						Serial.println(off);
 						
+						/* Motif redondant jusqu'au dernier octet de l'echantillon : continuite */
 						if (len == maxlen - 2) {
 							adr_lir = adresse_entree;
-							adr_ecr_comp_vrai = adresse_sortie;
+							adr_ecr_comp = adresse_sortie;
 							if (adresse_sortie > adresse_sortie_debut)
 							{
 								olen = adresse_sortie - adresse_sortie_debut;
 							}
 							else
 							{
-								olen = MEMORY_COMPRESSED_MAX - adresse_sortie_debut + adresse_sortie - MEMORY_SIZE;
+								olen = MEMORY_COMPRESSED_MAX + 1 - adresse_sortie_debut + adresse_sortie - MEMORY_SIZE - 1;
 							}
 							longueur_compressee_totale = longueur_compressee_totale + olen;
 							longueur_initiale_totale = longueur_initiale_totale + ilen;
@@ -929,25 +859,26 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 
 						Encodage_compression(&len, &off, &adresse_entree, &adresse_sortie, &lit);
 						
-					} /* Fin de la redondance */
+					} /* Redondance */
 					
-					else { /* Pas de redondance : recopiage */
-						db("Pas de redondance : recopiage");
+					else { /* Absence de redondance : recopiage litteral */
+						
+						db("Absence de redondance : recopiage litteral");
+						
 						/* Cas du premier octet du 2nd echantillon : recopiage */
 						if (compteur_echantillon == 2 && adresse_entree == adresse_entree_debut) {
 							lit = 19;
 						}
-						error = Literal_run(&adresse_entree, &adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
-						if (error != 0) return error;
+						Literal_run(&adresse_entree, &adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
 					}
 
-				} /* Fin des echantillons < 240 */
+				} /* echantillons < Dernier_echantillon */
 
 				else if (compteur_echantillon == Dernier_echantillon) {
 
 					db("Dernier echantillon !");
 
-					/* En cas de redondance */
+					/* Redondance */
 					if (((ref < adresse_entree) | (adresse_entree < adr_lir_deb))
 						&& ((off = (adresse_entree - ref - 1) > 0 ? (adresse_entree - ref - 1) : (MEMORY_SIZE - ref + adresse_entree)) < LZFX_MAX_OFF)
 						&& (adresse_entree + 4 < adresse_entree_fin ? 1 : (ilen - adresse_entree - adresse_entree_debut > 4))  /* Backref takes up to 3 bytes, so don't bother */
@@ -958,113 +889,123 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 						
 						len = 3;
 						
-						//Définition du maximum d'octets similaires à la suite
+						/* Définition du maximum d'octets similaires à la suite */
 						if (adresse_entree < adresse_entree_fin) {
 							maxlen = adresse_entree_fin - adresse_entree - 2 > LZFX_MAX_REF ?
 								LZFX_MAX_REF : adresse_entree_fin - adresse_entree - 2;
 						}
 						else {
-							maxlen = (MEMORY_SIZE - adresse_entree + adresse_entree_fin - 2) > LZFX_MAX_REF ? LZFX_MAX_REF : MEMORY_SIZE - adresse_entree + adresse_entree_fin - 2;
+							maxlen = (MEMORY_SIZE + 1 - adresse_entree + adresse_entree_fin - 2) > LZFX_MAX_REF ? LZFX_MAX_REF : MEMORY_SIZE + 1 - adresse_entree + adresse_entree_fin - 2;
 						}
-						db("maxlen");
-						Serial.println(maxlen);
-						db("lit");
-						Serial.println(lit);
 						Fin_Literal_run(&adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
 						
-						/*  Start checking at the fourth byte */
+						/* Verification de la longueur du motif en commençant par comparer le 4e octet */
 						while ((len < maxlen) && read_1_byte(ref + len > MEMORY_SIZE ? len - (MEMORY_SIZE - ref + 1) : ref + len) == read_1_byte(adresse_entree + len > MEMORY_SIZE ? len - (MEMORY_SIZE - adresse_entree + 1) : adresse_entree + len)) {
 							len++;
 						}
 
-						db("adresse_sortie");
-						Serial.println(adresse_sortie);
 						len -= 2;  /* We encode the length as #octets - 2 */
-						db("len : ");
-						Serial.println(len);
-						db("off : ");
-						Serial.println(off);
 						Encodage_compression(&len, &off, &adresse_entree, &adresse_sortie, &lit);
 
-						/* Detection des 3 trois derniers octets de donnees d'entree */
+						/* Detection des 3 trois derniers octets */
 						if (adresse_entree > adresse_entree_debut ? fx_expect_false(ilen - (adresse_entree - adresse_entree_debut) <= 3) : fx_expect_false(adresse_entree + 3 >= adresse_entree_fin)) {
 							break;
 						}
 						
-					}/* Fin Redondance */
+					}/* Redondance */
 
-					else { /* Pas de redondance : recopiage */
-						db("Pas de redondance : recopiage");
-						error = Literal_run(&adresse_entree, &adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
-						if (error != 0) return error;
+					else { /* Absence de redondance : recopiage */
+
+						db("Absence de redondance : recopiage");
+						Literal_run(&adresse_entree, &adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
 					}
 					
 				}/* Dernier echantillon */
 
-			} /* Pas de motif redondant d'un echantillon sur l'autre */
+			} /* Absence de motif redondant d'un echantillon sur l'autre */
 
 		}/* Boucle de lecture par 3 octets */
+
 		db("Derniers octets !");
+
 		/* Cas des echantillons dont les derniers octets suivent un Literal Run */
 		if (compteur_echantillon != Dernier_echantillon) {
 			adr_lir = adresse_entree;
-			adr_ecr_comp_vrai = adresse_sortie;
+			adr_ecr_comp = adresse_sortie;
 			if (adresse_sortie > adresse_sortie_debut)
 			{
 				olen = adresse_sortie - adresse_sortie_debut;
 			}
 			else
 			{
-				olen = MEMORY_COMPRESSED_MAX - adresse_sortie_debut + adresse_sortie - MEMORY_SIZE;
+				olen = MEMORY_COMPRESSED_MAX + 1 - adresse_sortie_debut + adresse_sortie - MEMORY_SIZE - 1;
 			}
 			longueur_compressee_totale = longueur_compressee_totale + olen;
 			longueur_initiale_totale = longueur_initiale_totale + ilen;
 			return lit;
 		}
+
 		/* Cas des derniers octets du dernier echantillon */
 		else {
-			error = Recopiage_final(&adresse_entree, &adresse_entree_debut, &adresse_entree_fin, &ilen, &adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &olen, &lit);
-			if (error != 0) return error;
-			error = Fin_Literal_run(&adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
-			if (error != 0) return error;
+			Recopiage_final(&adresse_entree, &adresse_entree_debut, &adresse_entree_fin, &ilen, &adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &olen, &lit);
+			Fin_Literal_run(&adresse_sortie, &adresse_sortie_debut, &adresse_sortie_fin, &lit, &olen);
 		}
 
 
-	} /* Fin compteur d'echantillon =! 1 */
+	} /* compteur_echantillon =! 1 */
 
-	  //Calcul de la taille de l'echantillon compresse
+	/* Calcul de la taille de l'echantillon compresse */
 	if (adresse_sortie > adresse_sortie_debut)
 	{
-		olen = adresse_sortie - adresse_sortie_debut; //adresse_sortie - adresse_sortie_debut; 
+		olen = adresse_sortie - adresse_sortie_debut;  
 	}
 	else
 	{
-		olen = MEMORY_COMPRESSED_MAX - adresse_sortie_debut + adresse_sortie - MEMORY_SIZE;
+		olen = MEMORY_COMPRESSED_MAX + 1 - adresse_sortie_debut + adresse_sortie - MEMORY_SIZE - 1;
 	}
 
-	//Calcul de l'adresse de fin des donnees compressees
+	/* Calcul de l'adresse de fin des donnees compressees */
 	if (adresse_sortie_debut + olen <= MEMORY_COMPRESSED_MAX)
 	{
 		adresse_sortie_fin = adresse_sortie_debut + olen;
 	}
 	else
 	{
-		uint16_t bas = MEMORY_COMPRESSED_MAX - adresse_sortie_debut;
+		uint16_t bas = MEMORY_COMPRESSED_MAX + 1 - adresse_sortie_debut;
 		adresse_sortie_fin = MEMORY_SIZE + 1 + olen - bas;
 	}
 
-	//Calcul des longueurs de donnees totales
+	/* Calcul des longueurs totales de donnees  */
 	longueur_compressee_totale = longueur_compressee_totale + olen;
 	longueur_initiale_totale = longueur_initiale_totale + ilen;
 
-	//Mise a jour des pointeurs
+	/* Mise a jour des pointeurs */
 	adr_lir = adresse_entree_fin > MEMORY_SIZE ? 0 : adresse_entree_fin;
-	adr_ecr_comp_vrai = adresse_sortie_fin  > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : adresse_sortie_fin;
+	adr_ecr_comp = adresse_sortie  > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + 1 : adresse_sortie;
 	
 	//Affichages
-	int k;
-	for (k = 0; k < longueur_compressee_totale; k++) {
-		Serial.println(read_1_byte(adr_lir_comp + k));
+#ifdef _DEBUG
+	int k,m;
+	if (compteur_echantillon == 1) {
+		for (k = 0; k < olen ; k++) {
+			Serial.println (read_1_byte (adr_lir_comp + k > MEMORY_COMPRESSED_MAX ? MEMORY_SIZE + adr_lir_comp + k - MEMORY_COMPRESSED_MAX : adr_lir_comp + k));
+		}
+	}
+	else {
+		if (longueur_compressee_totale <= MEMORY_COMPRESSED_MAX + 1 - adr_lir_comp) {
+			for (k = 0; k < longueur_compressee_totale; k++) {
+				Serial.println(read_1_byte(adr_lir_comp + k));
+			}
+		}
+		else {
+			for (k = 0; k < MEMORY_COMPRESSED_MAX + 1 - adr_lir_comp ; k++) {
+				Serial.println(read_1_byte(adr_lir_comp + k));
+			}
+			for (m = 0; m < longueur_compressee_totale - (MEMORY_COMPRESSED_MAX + 1 - adr_lir_comp); m++) {
+				Serial.println(read_1_byte(MEMORY_SIZE + 1 + m));
+			}
+		}
+
 	}
 	db("olen : ");
 	Serial.println(olen);
@@ -1073,11 +1014,12 @@ uint32_t lzfx_compress(uint16_t adresse_entree, uint16_t adresse_sortie) {
 	db("adr_lir : ");
 	Serial.println(adr_lir);
 	db("adr_ecr_comp_vrai : ");
-	Serial.println(adr_ecr_comp_vrai);
+	Serial.println(adr_ecr_comp);
 	db("Longueur initiale totale : ");
 	Serial.println(longueur_initiale_totale);
 	db("Longueur compressee totale : ");
 	Serial.println(longueur_compressee_totale);
+#endif
 	return 0;
 }
 
